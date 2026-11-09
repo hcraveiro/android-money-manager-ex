@@ -96,7 +96,8 @@ public class ScheduledTransactionForecastListServices {
             Timber.d("ScheduledTransactionForecastListServices: Start compute forecast.");
             isReady = false;
             createScheduledTransactionForecast(context);
-            scheduleTransactionForecastList.populateCacheForCategory();
+            scheduleTransactionForecastList.populateCacheForCategory(
+                new CurrencyService(context));
             isReady = true;
             Timber.d("ScheduledTransactionForecastListServices: End compute forecast.");
             return scheduleTransactionForecastList;
@@ -126,14 +127,16 @@ public class ScheduledTransactionForecastListServices {
                 @SuppressLint("Range") RecurringTransactionService recurringTransactionService = new RecurringTransactionService(cursor.getLong(cursor.getColumnIndexOrThrow(QueryBillDeposits.BDID)), context);
                 RecurringTransaction rx = recurringTransactionService.getSimulatedTransactionAsClone();
                 if (rx == null) continue;
+                long accountCurrencyId = cursor.getLong(
+                    cursor.getColumnIndexOrThrow(QueryBillDeposits.CURRENCYID));
+                scheduleTransactionForecastList.setAccountCurrency(
+                    rx.getAccountId(), accountCurrencyId);
                 if (rx.isVirtual()) {
                     if (rx.getTransactionType() == TransactionTypes.Transfer
                         || !VirtualRecurringAllocation.isValidFrequency(
                             rx.getRecurrence(), rx.getVirtualFrequency())) continue;
 
-                    long currencyId = cursor.getLong(
-                        cursor.getColumnIndexOrThrow(QueryBillDeposits.CURRENCYID));
-                    Currency currency = currencyService.getCurrency(currencyId);
+                    Currency currency = currencyService.getCurrency(accountCurrencyId);
                     if (currency == null || currency.getScale() == null
                         || currency.getScale() <= 0) continue;
                     int scale = currency.getScale();
