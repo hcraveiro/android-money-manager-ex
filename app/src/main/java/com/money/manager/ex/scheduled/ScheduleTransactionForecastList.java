@@ -2,7 +2,9 @@ package com.money.manager.ex.scheduled;
 
 import androidx.annotation.NonNull;
 
+import com.money.manager.ex.currency.CurrencyService;
 import com.money.manager.ex.domainmodel.RecurringTransaction;
+import info.javaperformance.money.Money;
 import com.money.manager.ex.utils.MmxDate;
 
 import java.util.ArrayList;
@@ -54,6 +56,8 @@ public class ScheduleTransactionForecastList
     }
 
     private final HashMap<ScheduleTransactionCacheKey, Double> cacheForecastAmount = new HashMap<>();
+    private final HashMap<Long, Long> accountCurrencyIds = new HashMap<>();
+    private CurrencyService forecastCurrencyService;
 
     ScheduleTransactionForecastList() {
     }
@@ -91,17 +95,31 @@ public class ScheduleTransactionForecastList
         this.sort(Comparator.comparing(RecurringTransaction::getPaymentDate));
     }
 
+    public void setAccountCurrency(Long accountId, long currencyId) {
+        if (accountId != null) accountCurrencyIds.put(accountId, currencyId);
+    }
+
+    private double amountInBaseCurrency(RecurringTransaction transaction) {
+        Money amount = transaction.getRealSignedAmount();
+        Long sourceCurrency = accountCurrencyIds.get(transaction.getAccountId());
+        if (forecastCurrencyService != null && sourceCurrency != null) {
+            amount = forecastCurrencyService.doCurrencyExchange(
+                forecastCurrencyService.getBaseCurrencyId(), amount, sourceCurrency);
+        }
+        return amount.toDouble();
+    }
+
     public ScheduleTransactionForecastList populateCacheForCategory() {
+        return populateCacheForCategory(null);
+    }
+
+    public ScheduleTransactionForecastList populateCacheForCategory(
+            CurrencyService currencyService) {
+        forecastCurrencyService = currencyService;
         cacheForecastAmount.clear();
-        for (RecurringTransaction recurringTransaction : this ) {
-            ScheduleTransactionCacheKey key = new ScheduleTransactionCacheKey(recurringTransaction);
-            if( cacheForecastAmount.containsKey(key)) {
-                cacheForecastAmount.put(key,
-                        cacheForecastAmount.get(key)
-                                + recurringTransaction.getRealSignedAmount().toDouble() );
-            } else {
-                cacheForecastAmount.put(key, recurringTransaction.getRealSignedAmount().toDouble());
-            }
+        for (RecurringTransaction transaction : this) {
+            ScheduleTransactionCacheKey key = new ScheduleTransactionCacheKey(transaction);
+            cacheForecastAmount.merge(key, amountInBaseCurrency(transaction), Double::sum);
         }
         return this;
     }
@@ -113,10 +131,9 @@ public class ScheduleTransactionForecastList
     public Double getTotalAmount() {
         if (this.size() == 0) return 0.0;
 
-        // todo handle currency
         double total = 0.0;
-        for ( RecurringTransaction recurringTransaction : this ) {
-            total += recurringTransaction.getRealSignedAmount().toDouble();
+        for (RecurringTransaction transaction : this) {
+            total += amountInBaseCurrency(transaction);
         }
         return total;
     }
