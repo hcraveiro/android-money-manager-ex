@@ -35,8 +35,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Verify preinstalled Android SDK
+        run: |
+          test -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          sdkmanager --version
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
