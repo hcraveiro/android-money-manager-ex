@@ -379,7 +379,7 @@ public class CashFlowReportListFragment
         LocalDate horizon = LocalDate.parse(endDate.toIsoDateString());
         try (Cursor cursor = context.getContentResolver().query(
                 posted.getUri(), posted.getAllColumns(),
-                QueryAllData.Date + " > ?", new String[]{today.toString()},
+                "date(" + QueryAllData.Date + ") > ?", new String[]{today.toString()},
                 QueryAllData.Date)) {
             if (cursor == null) return;
             while (cursor.moveToNext()) {
