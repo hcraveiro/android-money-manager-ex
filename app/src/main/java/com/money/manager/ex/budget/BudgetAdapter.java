@@ -151,11 +151,11 @@ public class BudgetAdapter
             double forecastRemain;
             if (categoryIdForecastAmount.containsKey( categoryId ) ) {
                 // reuse from cache
-                forecastRemain = categoryIdAmountAvailable.get(categoryId) - categoryIdForecastAmount.get(categoryId);
+                forecastRemain = categoryIdAmountAvailable.get(categoryId) + categoryIdForecastAmount.get(categoryId);
             } else {
                 double totalFromSchedule = getEstimateFromRecurringTransaction(categoryId);
                 double amountAvailable = categoryIdAmountAvailable.get(categoryId);
-                forecastRemain = amountAvailable - totalFromSchedule;
+                forecastRemain = amountAvailable + totalFromSchedule;
             }
             setViewElement(view, R.id.forecastRemainTextView, forecastRemain, currencyService, forecastRemain > 0);
             view.postInvalidate();
@@ -311,7 +311,7 @@ public class BudgetAdapter
             fieldRequestUpdate.add(view);
         } else {
             double totalFromSchedule = getEstimateFromRecurringTransaction(categoryId);
-            double forecastRemain = amountAvailable - totalFromSchedule;
+            double forecastRemain = amountAvailable + totalFromSchedule;
             setViewElement(view, R.id.forecastRemainTextView, forecastRemain, currencyService, forecastRemain > 0);
         }
     }
