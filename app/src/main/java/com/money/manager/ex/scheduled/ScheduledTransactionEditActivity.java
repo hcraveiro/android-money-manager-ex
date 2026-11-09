@@ -26,6 +26,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemSelectedListener;
+import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.Spinner;
 import android.widget.Toast;
 
@@ -58,7 +60,9 @@ import com.squareup.sqlbrite3.BriteDatabase;
 import org.greenrobot.eventbus.Subscribe;
 import org.parceler.Parcels;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 import javax.inject.Inject;
 
@@ -92,6 +96,10 @@ public class ScheduledTransactionEditActivity
 
     private ScheduledTransactionViewHolder mViewHolder;
     private EditTransactionCommonFunctions mCommon;
+    private CheckBox virtualCheckbox;
+    private Spinner virtualFrequencySpinner;
+    private Spinner recurrenceModeSpinner;
+    private boolean originallyVirtual;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -338,6 +346,8 @@ public class ScheduledTransactionEditActivity
 
         Spinner spinFrequencies = findViewById(R.id.spinnerFrequencies);
         Spinner spinRecurringMode = findViewById(R.id.recurringMode);
+        recurrenceModeSpinner = spinRecurringMode;
+        originallyVirtual = txWasAlreadyVirtual();
 
         RecurringTransaction tx = (RecurringTransaction) mCommon.transactionEntity;
         int recurrence = tx.getRecurrenceInt().intValue();
@@ -364,6 +374,7 @@ public class ScheduledTransactionEditActivity
 
                 getRecurringTransaction().setRecurrence(position);
                 showPaymentsLeft();
+                updateVirtualFrequencyOptions();
             }
 
             @Override
@@ -379,6 +390,8 @@ public class ScheduledTransactionEditActivity
                 mCommon.setDirty(true);
 
                 getRecurringTransaction().setRecurrenceMode(position);
+                if (virtualCheckbox != null && virtualCheckbox.isChecked())
+                    getRecurringTransaction().setRecurrenceMode(0);
             }
 
             @Override
@@ -389,12 +402,126 @@ public class ScheduledTransactionEditActivity
                                                   }
         );
 
+        initializeVirtualControls();
+
         // Tag
         mCommon.initTagsControls();
 
         // color
         mCommon.initColorControls();
 
+    }
+
+    private boolean txWasAlreadyVirtual() {
+        RecurringTransaction transaction = getRecurringTransaction();
+        return transaction.hasId() && transaction.isVirtual();
+    }
+
+    private void initializeVirtualControls() {
+        virtualCheckbox = findViewById(R.id.checkBoxVirtualRecurring);
+        virtualFrequencySpinner = findViewById(R.id.spinnerVirtualFrequency);
+        virtualCheckbox.setChecked(getRecurringTransaction().isVirtual());
+        updateVirtualFrequencyOptions();
+        virtualCheckbox.setOnCheckedChangeListener((button, checked) -> {
+            mCommon.setDirty(true);
+            updateVirtualFrequencyOptions();
+        });
+    }
+
+    private void updateVirtualFrequencyOptions() {
+        if (virtualCheckbox == null || virtualFrequencySpinner == null) return;
+
+        RecurringTransaction transaction = getRecurringTransaction();
+        String selected = (String) virtualFrequencySpinner.getSelectedItem();
+        if (selected == null)
+            selected = transaction.getVirtualFrequency();
+
+        List<String> available = new ArrayList<>();
+        for (String candidate : new String[] { "Daily", "Weekly", "Monthly", "Quarterly" }) {
+            if (VirtualRecurringAllocation.isValidFrequency(transaction.getRecurrence(), candidate))
+                available.add(candidate);
+        }
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+            this, android.R.layout.simple_spinner_item, available);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        virtualFrequencySpinner.setAdapter(adapter);
+        int index = available.indexOf(selected);
+        if (index >= 0) virtualFrequencySpinner.setSelection(index);
+
+        boolean canEnable = !available.isEmpty()
+            && transaction.getTransactionType() != TransactionTypes.Transfer;
+        virtualCheckbox.setEnabled(canEnable);
+        if (!canEnable) virtualCheckbox.setChecked(false);
+        virtualFrequencySpinner.setEnabled(canEnable && virtualCheckbox.isChecked());
+        if (recurrenceModeSpinner != null) {
+            if (virtualCheckbox.isChecked()) {
+                recurrenceModeSpinner.setSelection(0);
+                transaction.setRecurrenceMode(0);
+            }
+            recurrenceModeSpinner.setEnabled(!virtualCheckbox.isChecked());
+        }
+    }
+
+    private boolean movePastVirtualDatesForward(RecurringTransaction transaction) {
+        Date nextPayment = transaction.getPaymentDate();
+        Date nextDue = transaction.getDueDate();
+        if (nextPayment == null || nextDue == null) return false;
+
+        RecurringTransactionService service = new RecurringTransactionService(this);
+        Recurrence recurrence = transaction.getRecurrence();
+        Date today = MmxDate.newDate().toDate();
+        Long paymentsLeft = transaction.getPaymentsLeft();
+        long remaining = paymentsLeft == null ? Constants.NOT_SET : paymentsLeft;
+
+        for (int i = 0; i < 10000 && !nextPayment.after(today); ++i) {
+            if (remaining == 0 || remaining == 1) return false;
+
+            Date advancedPayment = service.getNextScheduledDate(
+                nextPayment, recurrence, (int) Math.min(Integer.MAX_VALUE, Math.max(0, remaining)));
+            Date advancedDue = service.getNextScheduledDate(
+                nextDue, recurrence, (int) Math.min(Integer.MAX_VALUE, Math.max(0, remaining)));
+            if (advancedPayment == null || !advancedPayment.after(nextPayment)
+                || advancedDue == null || !advancedDue.after(nextDue)) return false;
+            nextPayment = advancedPayment;
+            nextDue = advancedDue;
+            if (remaining > 0) remaining--;
+        }
+        if (!nextPayment.after(today)) return false;
+        transaction.setPaymentDate(nextPayment);
+        transaction.setDueDate(nextDue);
+        if (paymentsLeft != null && paymentsLeft > 0)
+            transaction.setPaymentsLeft(remaining);
+        transaction.setRecurrenceMode(0);
+        return true;
+    }
+
+    private boolean collectVirtualOptions() {
+        RecurringTransaction transaction = getRecurringTransaction();
+        boolean enabled = virtualCheckbox != null && virtualCheckbox.isChecked();
+        if (enabled) {
+            String frequency = (String) virtualFrequencySpinner.getSelectedItem();
+            if (transaction.getTransactionType() == TransactionTypes.Transfer
+                || !VirtualRecurringAllocation.isValidFrequency(
+                    transaction.getRecurrence(), frequency)) {
+                Toast.makeText(this, R.string.invalid_virtual_frequency, Toast.LENGTH_LONG).show();
+                return false;
+            }
+            transaction.setVirtual(true);
+            transaction.setVirtualFrequency(frequency);
+            transaction.setRecurrenceMode(0);
+            if (!originallyVirtual || transaction.getVirtualStartDate() == null
+                || transaction.getVirtualStartDate().isEmpty())
+                transaction.setVirtualStartDate(new MmxDate().toIsoDateString());
+        } else {
+            if (originallyVirtual && !movePastVirtualDatesForward(transaction)) {
+                Toast.makeText(this, R.string.invalid_virtual_next_occurrence,
+                    Toast.LENGTH_LONG).show();
+                return false;
+            }
+            transaction.setVirtual(false);
+            transaction.setVirtualStartDate(null);
+        }
+        return true;
     }
 
     private void initializePaymentDateSelector() {
@@ -586,6 +713,7 @@ public class ScheduledTransactionEditActivity
         collectDataFromUI();
 
         if (!validateData()) return false;
+        if (!collectVirtualOptions()) return false;
 
         // invalidate Cache for ScheduledTransactionForecastListServices
         ScheduledTransactionForecastListServices.destroyInstance();

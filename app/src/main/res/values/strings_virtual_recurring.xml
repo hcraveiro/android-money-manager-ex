@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="virtual_recurring_transaction">Virtual (Cash Flow forecast only)</string>
+    <string name="virtual_frequency">Virtual frequency</string>
+    <string name="invalid_virtual_frequency">Select a virtual frequency shorter than the recurrence. Transfers are not supported.</string>
+    <string name="invalid_virtual_next_occurrence">No future nominal payment remains. Change the due date or payments left.</string>
+</resources>
