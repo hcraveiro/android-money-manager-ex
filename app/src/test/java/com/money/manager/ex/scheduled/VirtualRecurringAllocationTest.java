@@ -79,6 +79,63 @@ public class VirtualRecurringAllocationTest {
     }
 
     @Test
+    public void fullWeeklyCyclePreservesDueDateAnchors() {
+        LocalDate due = LocalDate.of(2026, 11, 30);
+        LocalDate previous = LocalDate.of(2026, 10, 31);
+        List<VirtualRecurringAllocation.Entry> entries =
+            VirtualRecurringAllocation.allocate(3000, previous, due,
+                previous, previous, due, "Weekly");
+        assertEquals(5, entries.size());
+        assertEquals(LocalDate.of(2026, 11, 2), entries.get(0).date);
+        assertEquals(200, entries.get(0).minorUnits);
+        for (int i = 1; i < entries.size(); ++i) {
+            assertEquals(LocalDate.of(2026, 11, 2 + 7 * i), entries.get(i).date);
+            assertEquals(700, entries.get(i).minorUnits);
+        }
+        assertEquals(3000, sum(entries));
+    }
+
+    @Test
+    public void yearlyQuarterlyCyclePreservesExactMinorUnits() {
+        LocalDate due = LocalDate.of(2026, 11, 30);
+        LocalDate previous = LocalDate.of(2025, 11, 30);
+        for (long amount : new long[] {1, 120001, -120001}) {
+            List<VirtualRecurringAllocation.Entry> entries =
+                VirtualRecurringAllocation.allocate(amount, previous, due,
+                    previous, previous, due, "Quarterly");
+            assertEquals(amount, sum(entries));
+            assertEquals(LocalDate.of(2026, 11, 30), entries.get(entries.size() - 1).date);
+        }
+    }
+
+    @Test
+    public void monthEndNominalAdvancementRemainsAnchored() {
+        assertEquals(LocalDate.of(2026, 12, 31),
+            VirtualRecurringAllocation.nextNominalDue(
+                LocalDate.of(2026, 11, 30), Recurrence.MONTHLY_LAST_DAY));
+        assertEquals(LocalDate.of(2024, 3, 31),
+            VirtualRecurringAllocation.nextNominalDue(
+                LocalDate.of(2024, 2, 29), Recurrence.MONTHLY_LAST_DAY));
+    }
+
+    @Test
+    public void lastBusinessDayUsesActualWeekdayBoundaries() {
+        LocalDate due = LocalDate.of(2026, 1, 30);
+        assertEquals(LocalDate.of(2025, 12, 31),
+            VirtualRecurringAllocation.previousNominalDue(
+                due, Recurrence.MONTHLY_LAST_BUSINESS_DAY));
+        assertEquals(LocalDate.of(2026, 2, 27),
+            VirtualRecurringAllocation.nextNominalDue(
+                due, Recurrence.MONTHLY_LAST_BUSINESS_DAY));
+
+        List<VirtualRecurringAllocation.Entry> entries =
+            VirtualRecurringAllocation.allocate(3100, LocalDate.of(2025, 12, 31),
+                due, LocalDate.of(2025, 12, 31), null, due, "Daily");
+        assertEquals(3100, sum(entries));
+        assertEquals(30, entries.size());
+    }
+
+    @Test
     public void monthEndHandlesLeapYears() {
         assertEquals(LocalDate.of(2024, 2, 29),
             VirtualRecurringAllocation.previousNominalDue(
