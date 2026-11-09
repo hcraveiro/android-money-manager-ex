@@ -1,0 +1,84 @@
+name: Virtual Recurring - Android CI
+
+on:
+  push:
+    branches:
+      - feature/virtual-recurring-transactions
+    tags:
+      - 'virtual-v*'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: virtual-android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debug-build:
+    name: Android F-Droid debug APK and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Android source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run F-Droid debug unit tests and build APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace \
+            :app:testFdroidDebugUnitTest \
+            :app:assembleFdroidDebug
+
+      - name: Verify debug APK output
+        run: |
+          find app/build/outputs/apk/fdroid/debug -maxdepth 1 \
+            -type f -name '*.apk' -print -quit | grep -q .
+
+      - name: Upload isolated test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmex-virtual-android-fdroid-debug
+          path: app/build/outputs/apk/fdroid/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  prerelease:
+    name: Create GitHub prerelease (tag only)
+    needs: debug-build
+    if: startsWith(github.ref, 'refs/tags/virtual-v') && github.repository == 'hcraveiro/android-money-manager-ex'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: mmex-virtual-android-fdroid-debug
+          path: dist
+
+      - name: Publish opt-in APK prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          generate_release_notes: true
+          files: dist/*.apk
+          fail_on_unmatched_files: true
