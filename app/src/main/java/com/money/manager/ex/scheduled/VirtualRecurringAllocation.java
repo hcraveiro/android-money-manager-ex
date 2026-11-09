@@ -221,8 +221,11 @@ public final class VirtualRecurringAllocation {
             // Only an incomplete bucket is prorated by its own elapsed days.
             int step = "Monthly".equals(frequency) ? 1 : 3;
             List<LocalDate> ends = new ArrayList<>();
+            boolean monthEndAnchor = due.getDayOfMonth() == due.lengthOfMonth();
             for (int months = 0; months <= 24; months += step) {
                 LocalDate candidate = due.minusMonths(months);
+                if (monthEndAnchor)
+                    candidate = candidate.withDayOfMonth(candidate.lengthOfMonth());
                 if (!candidate.isAfter(previousDue)) break;
                 ends.add(candidate);
             }
