@@ -43,6 +43,20 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Checkout pinned cross-client acceptance vectors
+        uses: actions/checkout@v4
+        with:
+          repository: hcraveiro/database
+          ref: f42a4fd45c78bcc2a9fd8ec9c134a101078b0758
+          path: acceptance-fixtures
+          persist-credentials: false
+
+      - name: Stage canonical acceptance matrix in test resources
+        run: |
+          mkdir -p app/src/test/resources
+          cp acceptance-fixtures/tests/virtual_recurring_acceptance.csv \
+            app/src/test/resources/virtual_recurring_acceptance.csv
+
       - name: Run F-Droid debug unit tests and build APK
         run: |
           chmod +x ./gradlew
