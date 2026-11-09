@@ -136,6 +136,86 @@ public class VirtualRecurringAllocationTest {
     }
 
     @Test
+    public void pastDueSchedulesAdvanceWithoutChangingTheStoredDate() {
+        LocalDate storedDue = LocalDate.of(2026, 9, 30);
+        LocalDate today = LocalDate.of(2026, 11, 20);
+        VirtualRecurringAllocation.AdvanceResult advanced =
+            VirtualRecurringAllocation.advanceElapsed(
+                storedDue, Recurrence.MONTHLY, 5, today);
+        assertTrue(advanced.ready);
+        assertEquals(2, advanced.skipped);
+        assertEquals(3, advanced.paymentsLeft);
+        assertEquals(LocalDate.of(2026, 11, 30), advanced.nextDue);
+        assertEquals(LocalDate.of(2026, 9, 30), storedDue);
+
+        List<VirtualRecurringAllocation.Entry> entries =
+            VirtualRecurringAllocation.project(3000, storedDue,
+                Recurrence.MONTHLY, 5, today, null,
+                LocalDate.of(2026, 11, 30), "Weekly");
+        assertEquals(2, entries.size());
+        assertEquals(LocalDate.of(2026, 11, 23), entries.get(0).date);
+        assertEquals(300, entries.get(0).minorUnits);
+        assertEquals(LocalDate.of(2026, 11, 30), entries.get(1).date);
+        assertEquals(700, entries.get(1).minorUnits);
+    }
+
+    @Test
+    public void expiredFiniteSchedulesNeverRenewImplicitly() {
+        LocalDate storedDue = LocalDate.of(2026, 9, 30);
+        LocalDate today = LocalDate.of(2026, 11, 20);
+        assertTrue(!VirtualRecurringAllocation.advanceElapsed(
+            storedDue, Recurrence.MONTHLY, 2, today).ready);
+        for (long paymentsLeft : new long[] {0, 1, 2}) {
+            assertTrue(VirtualRecurringAllocation.project(
+                3000, storedDue, Recurrence.MONTHLY, paymentsLeft, today,
+                null, LocalDate.of(2027, 1, 31), "Weekly").isEmpty());
+        }
+    }
+
+    @Test
+    public void unlimitedSchedulesContinueAfterPastOccurrences() {
+        LocalDate storedDue = LocalDate.of(2026, 9, 30);
+        LocalDate today = LocalDate.of(2026, 11, 20);
+        VirtualRecurringAllocation.AdvanceResult advanced =
+            VirtualRecurringAllocation.advanceElapsed(
+                storedDue, Recurrence.MONTHLY, -1, today);
+        assertTrue(advanced.ready);
+        assertEquals(-1, advanced.paymentsLeft);
+        assertEquals(2, advanced.skipped);
+        assertEquals(LocalDate.of(2026, 11, 30), advanced.nextDue);
+        assertEquals(1000, sum(VirtualRecurringAllocation.project(
+            3000, storedDue, Recurrence.MONTHLY, -1, today,
+            null, LocalDate.of(2026, 11, 30), "Daily")));
+        assertEquals(500, sum(VirtualRecurringAllocation.project(
+            3000, storedDue, Recurrence.MONTHLY, -1, today,
+            null, LocalDate.of(2026, 11, 25), "Weekly")));
+    }
+
+    @Test
+    public void futureActivationDoesNotCreateRetroactiveProjections() {
+        LocalDate due = LocalDate.of(2026, 11, 30);
+        LocalDate today = LocalDate.of(2026, 11, 20);
+        LocalDate activated = LocalDate.of(2026, 11, 25);
+        List<VirtualRecurringAllocation.Entry> entries =
+            VirtualRecurringAllocation.project(3000, due,
+                Recurrence.MONTHLY, 1, today, activated, due, "Daily");
+        assertEquals(500, sum(entries));
+        assertEquals(5, entries.size());
+    }
+
+    @Test
+    public void completedFiniteScheduleStopsAfterItsLastDueDate() {
+        LocalDate due = LocalDate.of(2026, 11, 30);
+        LocalDate today = LocalDate.of(2026, 11, 20);
+        List<VirtualRecurringAllocation.Entry> entries =
+            VirtualRecurringAllocation.project(3000, due,
+                Recurrence.MONTHLY, 1, today, null,
+                LocalDate.of(2027, 2, 28), "Weekly");
+        assertEquals(1000, sum(entries));
+        assertEquals(LocalDate.of(2026, 11, 30), entries.get(entries.size() - 1).date);
+    }
+
+    @Test
     public void monthEndHandlesLeapYears() {
         assertEquals(LocalDate.of(2024, 2, 29),
             VirtualRecurringAllocation.previousNominalDue(
