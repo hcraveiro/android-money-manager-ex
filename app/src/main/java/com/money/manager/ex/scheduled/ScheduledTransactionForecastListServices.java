@@ -21,6 +21,14 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.database.Cursor;
 
+import com.money.manager.ex.core.TransactionTypes;
+import com.money.manager.ex.currency.CurrencyService;
+import com.money.manager.ex.domainmodel.Currency;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.List;
+import info.javaperformance.money.MoneyFactory;
 import com.money.manager.ex.database.QueryBillDeposits;
 import com.money.manager.ex.domainmodel.RecurringTransaction;
 import com.money.manager.ex.servicelayer.RecurringTransactionService;
@@ -111,12 +119,48 @@ public class ScheduledTransactionForecastListServices {
             if (cursor == null || cursor.getCount() == 0)
                 return scheduleTransactionForecastList; // is empty
 
+            CurrencyService currencyService = new CurrencyService(context);
+            LocalDate today = LocalDate.parse(new MmxDate().toIsoDateString());
+            LocalDate horizon = LocalDate.parse(mDateTo.toIsoDateString());
             while (cursor.moveToNext()) {
                 @SuppressLint("Range") RecurringTransactionService recurringTransactionService = new RecurringTransactionService(cursor.getLong(cursor.getColumnIndexOrThrow(QueryBillDeposits.BDID)), context);
                 RecurringTransaction rx = recurringTransactionService.getSimulatedTransactionAsClone();
-                // This list does not yet allocate virtual schedules by frequency.
-                // Do not represent them as nominal, real future payments.
-                if (rx == null || rx.isVirtual()) continue;
+                if (rx == null) continue;
+                if (rx.isVirtual()) {
+                    if (rx.getTransactionType() == TransactionTypes.Transfer
+                        || !VirtualRecurringAllocation.isValidFrequency(
+                            rx.getRecurrence(), rx.getVirtualFrequency())) continue;
+
+                    long currencyId = cursor.getLong(
+                        cursor.getColumnIndexOrThrow(QueryBillDeposits.CURRENCYID));
+                    Currency currency = currencyService.getCurrency(currencyId);
+                    if (currency == null || currency.getScale() == null
+                        || currency.getScale() <= 0) continue;
+                    int scale = currency.getScale();
+                    long minorUnits = BigDecimal.valueOf(rx.getAmount().toDouble())
+                        .multiply(BigDecimal.valueOf(scale))
+                        .setScale(0, RoundingMode.HALF_UP).longValue();
+                    String startDate = rx.getVirtualStartDate();
+                    LocalDate activated = startDate == null || startDate.isEmpty()
+                        ? today : LocalDate.parse(startDate);
+                    Long paymentsLeft = rx.getPaymentsLeft();
+                    LocalDate nextDue = LocalDate.parse(
+                        rx.getPaymentDateAsMmxDate().toIsoDateString());
+                    List<VirtualRecurringAllocation.Entry> entries =
+                        VirtualRecurringAllocation.project(minorUnits, nextDue,
+                            rx.getRecurrence(), paymentsLeft == null ? -1L : paymentsLeft,
+                            today, activated, horizon, rx.getVirtualFrequency());
+                    for (VirtualRecurringAllocation.Entry entry : entries) {
+                        // An in-memory clone preserves account, category, currency and type.
+                        RecurringTransaction projection = new RecurringTransaction();
+                        projection.getContentValues().putAll(rx.getContentValues());
+                        projection.setPaymentDate(entry.date.toString());
+                        projection.setAmount(MoneyFactory.fromDouble(
+                            entry.minorUnits / (double) scale));
+                        scheduleTransactionForecastList.add(projection);
+                    }
+                    continue;
+                }
                 Timber.d("Recurring Transaction: %s", rx.toString());
                 if (rx.getPaymentDate().after(mDateTo.toDate())) {
                     // first occurrence of this transaction is over cash flow visibility
