@@ -70,6 +70,7 @@ import com.money.manager.ex.utils.MmxDateTimeUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -160,14 +161,12 @@ public class CashFlowReportListFragment
         } catch ( Exception e) {
             Timber.d(e);
         }
-        if (cursor == null ||
-                cursor.getCount() == 0)
-            return;
-
+        // The initial account balance is required even with no scheduled payments.
         getTotalAmountAndAccounts();
 
         List<HashMap<String, Object>> listRecurring = new ArrayList<>();
         HashMap<String, Object> row;
+        if (cursor != null) {
         while (cursor.moveToNext()) {
             RecurringTransactionService recurringTransactionService = new RecurringTransactionService(cursor.getLong(cursor.getColumnIndexOrThrow(QueryBillDeposits.BDID)), context);
             // ignore transfert if both is on selected account
@@ -243,20 +242,24 @@ public class CashFlowReportListFragment
             }
         }
         cursor.close();
+        }
 
         listRecurring.sort(Comparator.comparing((HashMap<String, Object> uno) -> uno.get(QueryBillDeposits.TRANSDATE).toString()));
 
         long baseCurrencyId = (currencyService != null) ? currencyService.getBaseCurrencyId() : 0;
         graphValue = new ArrayList<>();
-        for (int x = 0; x < 31 * monthInAdvance; x++) {
+        LocalDate reportStart = LocalDate.parse(new MmxDate().toIsoDateString());
+        LocalDate reportEnd = LocalDate.parse(endDate.toIsoDateString());
+        int graphDays = (int) ChronoUnit.DAYS.between(reportStart, reportEnd) + 1;
+        for (int x = 0; x < graphDays; x++) {
             graphValue.add(null);
         }
         if (!graphValue.isEmpty()) {
             graphValue.set(0, totalAmount);
         }
 
-        Date olderDate = MmxDate.newDate().toDate();
-        // copy to matrix cursor
+        // Copy projected values using calendar days, not elapsed milliseconds.
+        // This keeps the chart aligned across daylight-saving time changes.
         for (HashMap<String, Object> rowMap : listRecurring) {
             Money amountTrans;
             Money amountBase;
@@ -268,9 +271,9 @@ public class CashFlowReportListFragment
                 totalAmount += amountBase.toDouble();
             }
 
-            Date newerDate = MmxDate.from(rowMap.get(QueryBillDeposits.TRANSDATE).toString(), "yyyy-MM-dd");
-            int diffInDays = (int) ((newerDate.getTime() - olderDate.getTime())
-                    / (1000 * 60 * 60 * 24));
+            LocalDate forecastDate = LocalDate.parse(
+                rowMap.get(QueryBillDeposits.TRANSDATE).toString());
+            int diffInDays = (int) ChronoUnit.DAYS.between(reportStart, forecastDate);
             if (diffInDays < 0) diffInDays = 0;
             try {
                 graphValue.set(diffInDays, totalAmount);
