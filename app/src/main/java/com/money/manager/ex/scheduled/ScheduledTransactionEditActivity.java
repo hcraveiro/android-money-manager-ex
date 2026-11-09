@@ -60,6 +60,7 @@ import com.squareup.sqlbrite3.BriteDatabase;
 import org.greenrobot.eventbus.Subscribe;
 import org.parceler.Parcels;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -469,11 +470,12 @@ public class ScheduledTransactionEditActivity
 
         RecurringTransactionService service = new RecurringTransactionService(this);
         Recurrence recurrence = transaction.getRecurrence();
-        Date today = MmxDate.newDate().toDate();
+        LocalDate today = LocalDate.parse(new MmxDate().toIsoDateString());
         Long paymentsLeft = transaction.getPaymentsLeft();
         long remaining = paymentsLeft == null ? Constants.NOT_SET : paymentsLeft;
 
-        for (int i = 0; i < 10000 && !nextPayment.after(today); ++i) {
+        for (int i = 0; i < 10000 &&
+             !LocalDate.parse(new MmxDate(nextPayment).toIsoDateString()).isAfter(today); ++i) {
             if (remaining == 0 || remaining == 1) return false;
 
             Date advancedPayment = service.getNextScheduledDate(
@@ -486,7 +488,8 @@ public class ScheduledTransactionEditActivity
             nextDue = advancedDue;
             if (remaining > 0) remaining--;
         }
-        if (!nextPayment.after(today)) return false;
+        if (!LocalDate.parse(new MmxDate(nextPayment).toIsoDateString()).isAfter(today))
+            return false;
         transaction.setPaymentDate(nextPayment);
         transaction.setDueDate(nextDue);
         if (paymentsLeft != null && paymentsLeft > 0)

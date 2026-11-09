@@ -65,6 +65,20 @@ public class VirtualRecurringAllocationTest {
     }
 
     @Test
+    public void invalidFrequencyIsRejected() {
+        assertTrue(VirtualRecurringAllocation.isValidFrequency(
+            Recurrence.MONTHLY, "Daily"));
+        assertTrue(VirtualRecurringAllocation.isValidFrequency(
+            Recurrence.ANNUALLY, "Quarterly"));
+        assertTrue(!VirtualRecurringAllocation.isValidFrequency(
+            Recurrence.MONTHLY, "Monthly"));
+        assertTrue(!VirtualRecurringAllocation.isValidFrequency(
+            Recurrence.WEEKLY, "Weekly"));
+        assertTrue(!VirtualRecurringAllocation.isValidFrequency(
+            Recurrence.DAILY, "Daily"));
+    }
+
+    @Test
     public void monthEndHandlesLeapYears() {
         assertEquals(LocalDate.of(2024, 2, 29),
             VirtualRecurringAllocation.previousNominalDue(
