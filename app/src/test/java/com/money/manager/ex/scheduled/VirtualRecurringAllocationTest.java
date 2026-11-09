@@ -109,6 +109,54 @@ public class VirtualRecurringAllocationTest {
     }
 
     @Test
+    public void annualMonthlyInstallmentsAreEqualAndPartialNovemberIsProrated() {
+        LocalDate previous = LocalDate.of(2025, 11, 30);
+        LocalDate due = LocalDate.of(2026, 11, 30);
+        List<VirtualRecurringAllocation.Entry> full =
+            VirtualRecurringAllocation.allocate(12000, previous, due,
+                previous, previous, due, "Monthly");
+        assertEquals(12, full.size());
+        for (VirtualRecurringAllocation.Entry entry : full)
+            assertEquals(1000, entry.minorUnits);
+        assertEquals(LocalDate.of(2025, 12, 31), full.get(0).date);
+        assertEquals(LocalDate.of(2026, 11, 30), full.get(11).date);
+
+        List<VirtualRecurringAllocation.Entry> partial =
+            VirtualRecurringAllocation.allocate(12000, previous, due,
+                LocalDate.of(2026, 11, 9), null, due, "Monthly");
+        assertEquals(1, partial.size());
+        assertEquals(LocalDate.of(2026, 11, 30), partial.get(0).date);
+        assertEquals(700, partial.get(0).minorUnits);
+    }
+
+    @Test
+    public void weeklyForecastsRemainAnchoredToNominalDueDate() {
+        LocalDate previous = LocalDate.of(2026, 10, 31);
+        LocalDate due = LocalDate.of(2026, 11, 30);
+        List<VirtualRecurringAllocation.Entry> novNine =
+            VirtualRecurringAllocation.allocate(3000, previous, due,
+                LocalDate.of(2026, 11, 9), null, due, "Weekly");
+        assertEquals(3, novNine.size());
+        for (int index = 0; index < 3; ++index) {
+            assertEquals(LocalDate.of(2026, 11, 16).plusWeeks(index),
+                novNine.get(index).date);
+            assertEquals(700, novNine.get(index).minorUnits);
+        }
+
+        List<VirtualRecurringAllocation.Entry> novEight =
+            VirtualRecurringAllocation.allocate(3000, previous, due,
+                LocalDate.of(2026, 11, 8), null, due, "Weekly");
+        assertEquals(4, novEight.size());
+        assertEquals(LocalDate.of(2026, 11, 9), novEight.get(0).date);
+        assertEquals(100, novEight.get(0).minorUnits);
+        for (int index = 1; index < 4; ++index) {
+            assertEquals(LocalDate.of(2026, 11, 9).plusWeeks(index),
+                novEight.get(index).date);
+            assertEquals(700, novEight.get(index).minorUnits);
+        }
+    }
+
+    @Test
     public void monthEndNominalAdvancementRemainsAnchored() {
         assertEquals(LocalDate.of(2026, 12, 31),
             VirtualRecurringAllocation.nextNominalDue(
