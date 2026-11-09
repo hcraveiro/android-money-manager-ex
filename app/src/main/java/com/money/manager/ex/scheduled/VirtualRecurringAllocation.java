@@ -102,6 +102,77 @@ public final class VirtualRecurringAllocation {
         return cadence < nominal;
     }
 
+
+    public static final class AdvanceResult {
+        public final LocalDate nextDue;
+        public final long paymentsLeft;
+        public final int skipped;
+        public final boolean ready;
+
+        private AdvanceResult(LocalDate nextDue, long paymentsLeft, int skipped,
+                              boolean ready) {
+            this.nextDue = nextDue;
+            this.paymentsLeft = paymentsLeft;
+            this.skipped = skipped;
+            this.ready = ready;
+        }
+    }
+
+    /**
+     * Skip elapsed nominal occurrences in memory. An exhausted finite schedule
+     * never creates a replacement payment or changes the stored due date.
+     */
+    public static AdvanceResult advanceElapsed(LocalDate nextDue, Recurrence recurrence,
+                                               long paymentsLeft, LocalDate today) {
+        if (nextDue == null || today == null || paymentsLeft == 0)
+            return new AdvanceResult(nextDue, paymentsLeft, 0, false);
+
+        LocalDate due = nextDue;
+        long remaining = paymentsLeft;
+        for (int skipped = 0; skipped < 10000; ++skipped) {
+            if (due.isAfter(today))
+                return new AdvanceResult(due, remaining, skipped, true);
+            if (remaining == 1)
+                return new AdvanceResult(due, remaining, skipped, false);
+            LocalDate advanced = nextNominalDue(due, recurrence);
+            if (!advanced.isAfter(due))
+                return new AdvanceResult(due, remaining, skipped, false);
+            due = advanced;
+            if (remaining > 0) --remaining;
+        }
+        return new AdvanceResult(due, remaining, 10000, false);
+    }
+
+    /**
+     * Produce future-only virtual entries using the same nominal advancement
+     * and payment limit rules in every Android forecast consumer.
+     */
+    public static List<Entry> project(long amountMinorUnits, LocalDate nextDue,
+                                      Recurrence recurrence, long paymentsLeft,
+                                      LocalDate today, LocalDate activated,
+                                      LocalDate horizon, String frequency) {
+        List<Entry> entries = new ArrayList<>();
+        if (nextDue == null || horizon == null
+            || !isValidFrequency(recurrence, frequency)) return entries;
+
+        AdvanceResult advanced = advanceElapsed(nextDue, recurrence, paymentsLeft, today);
+        if (!advanced.ready) return entries;
+        LocalDate due = advanced.nextDue;
+        long remaining = advanced.paymentsLeft;
+        for (int cycle = 0; cycle < 10000 && !due.isAfter(horizon)
+             && remaining != 0; ++cycle) {
+            LocalDate previousDue = previousNominalDue(due, recurrence);
+            entries.addAll(allocate(amountMinorUnits, previousDue, due,
+                today, activated, horizon, frequency));
+            if (remaining == 1) break;
+            LocalDate next = nextNominalDue(due, recurrence);
+            if (!next.isAfter(due)) break;
+            due = next;
+            if (remaining > 0) --remaining;
+        }
+        return entries;
+    }
+
     private static LocalDate bucketEnd(LocalDate date, LocalDate due, String frequency) {
         switch (frequency) {
             case "Daily":
