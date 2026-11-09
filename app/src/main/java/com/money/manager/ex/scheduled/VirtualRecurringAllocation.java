@@ -30,12 +30,44 @@ public final class VirtualRecurringAllocation {
                 return due.minusWeeks(1);
             case MONTHLY:
             case MONTHLY_LAST_DAY:
-            case MONTHLY_LAST_BUSINESS_DAY:
                 return previousMonth(due, 1);
+            case MONTHLY_LAST_BUSINESS_DAY:
+                return lastBusinessDayOfMonth(due.minusMonths(1));
             case QUARTERLY:
                 return previousMonth(due, 3);
             case ANNUALLY:
                 return previousMonth(due, 12);
+            default:
+                throw new IllegalArgumentException("Unsupported nominal recurrence: " + recurrence);
+        }
+    }
+
+    private static LocalDate lastBusinessDayOfMonth(LocalDate date) {
+        LocalDate candidate = date.withDayOfMonth(date.lengthOfMonth());
+        while (candidate.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+            || candidate.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
+            candidate = candidate.minusDays(1);
+        }
+        return candidate;
+    }
+
+    // Calculate the next supported nominal occurrence without creating a payment.
+    public static LocalDate nextNominalDue(LocalDate due, Recurrence recurrence) {
+        switch (recurrence) {
+            case WEEKLY:
+                return due.plusWeeks(1);
+            case MONTHLY:
+                return due.plusMonths(1);
+            case MONTHLY_LAST_DAY: {
+                LocalDate nextMonth = due.plusMonths(1);
+                return nextMonth.withDayOfMonth(nextMonth.lengthOfMonth());
+            }
+            case MONTHLY_LAST_BUSINESS_DAY:
+                return lastBusinessDayOfMonth(due.plusMonths(1));
+            case QUARTERLY:
+                return due.plusMonths(3);
+            case ANNUALLY:
+                return due.plusYears(1);
             default:
                 throw new IllegalArgumentException("Unsupported nominal recurrence: " + recurrence);
         }
