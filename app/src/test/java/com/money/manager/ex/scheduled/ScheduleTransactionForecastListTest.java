@@ -41,6 +41,9 @@ public class ScheduleTransactionForecastListTest {
         when(currencyService.doCurrencyExchange(
             eq(1L), any(Money.class), eq(2L))).thenAnswer(
                 invocation -> ((Money) invocation.getArgument(1)).multiply(2));
+        when(currencyService.doCurrencyExchange(
+            eq(1L), any(Money.class), eq(1L))).thenAnswer(
+                invocation -> invocation.getArgument(1));
 
         ScheduleTransactionForecastList list = new ScheduleTransactionForecastList();
         list.setAccountCurrency(100L, 2L);
