@@ -51,6 +51,9 @@ jobs:
           path: acceptance-fixtures
           persist-credentials: false
 
+      - name: Test Android SQL queries with isolated v22 acceptance data
+        run: python3 .github/scripts/test_virtual_acceptance_queries.py
+
       - name: Stage canonical acceptance matrix in test resources
         run: |
           mkdir -p app/src/test/resources
