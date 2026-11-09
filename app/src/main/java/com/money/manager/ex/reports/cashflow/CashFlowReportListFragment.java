@@ -176,6 +176,7 @@ public class CashFlowReportListFragment
             RecurringTransaction rx = recurringTransactionService.getSimulatedTransaction();
             if (rx == null) continue;
             if (rx.isVirtual()) {
+                if ("V".equals(rx.getStatus())) continue;
                 appendVirtualForecast(cursor, rx, amount, endDate, listRecurring);
                 continue;
             }
@@ -272,7 +273,7 @@ public class CashFlowReportListFragment
             amountTrans = MoneyFactory.fromDouble((double) rowMap.get(QueryBillDeposits.AMOUNT));
             amountBase = (currencyService != null) ? currencyService.doCurrencyExchange(baseCurrencyId, amountTrans, transCurrency) : amountTrans;
 
-            if (!rowMap.get(QueryBillDeposits.STATUS).equals("V")) {
+            if (!"V".equals(rowMap.get(QueryBillDeposits.STATUS))) {
                 totalAmount += amountBase.toDouble();
             }
 
