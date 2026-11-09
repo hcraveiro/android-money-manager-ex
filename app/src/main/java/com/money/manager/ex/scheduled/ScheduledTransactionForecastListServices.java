@@ -78,9 +78,8 @@ public class ScheduledTransactionForecastListServices {
     }
 
     public ScheduledTransactionForecastListServices setDateTo(MmxDate dateTo) {
-        if ( mDateTo != null && mDateTo.toDate().before(dateTo.toDate())) {
-            Timber.d("ScheduledTransactionForecastListServices: Request new DateTo [%s] before actual cached value [%s]", dateTo.toIsoDateString(), mDateTo.toIsoDateString());
-            return this; // no change
+        if (mDateTo != null && mDateTo.toIsoDateString().equals(dateTo.toIsoDateString())) {
+            return this;
         }
         Timber.d("ScheduledTransactionForecastListServices: start new DateTo [%s] invalidating cache.", dateTo.toIsoDateString());
         mDateTo = dateTo;
