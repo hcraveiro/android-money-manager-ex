@@ -422,7 +422,8 @@ public class ScheduledTransactionEditActivity
         virtualCheckbox = findViewById(R.id.checkBoxVirtualRecurring);
         virtualFrequencySpinner = findViewById(R.id.spinnerVirtualFrequency);
         virtualCheckbox.setChecked(getRecurringTransaction().isVirtual());
-        updateVirtualFrequencyOptions();
+        // Restore the saved cadence before the spinner selects its first option.
+        updateVirtualFrequencyOptions(getRecurringTransaction().getVirtualFrequency());
         virtualCheckbox.setOnCheckedChangeListener((button, checked) -> {
             mCommon.setDirty(true);
             updateVirtualFrequencyOptions();
@@ -430,10 +431,15 @@ public class ScheduledTransactionEditActivity
     }
 
     private void updateVirtualFrequencyOptions() {
+        updateVirtualFrequencyOptions(null);
+    }
+
+    private void updateVirtualFrequencyOptions(String preferredFrequency) {
         if (virtualCheckbox == null || virtualFrequencySpinner == null) return;
 
         RecurringTransaction transaction = getRecurringTransaction();
-        String selected = (String) virtualFrequencySpinner.getSelectedItem();
+        String selected = preferredFrequency != null
+            ? preferredFrequency : (String) virtualFrequencySpinner.getSelectedItem();
         if (selected == null)
             selected = transaction.getVirtualFrequency();
 
