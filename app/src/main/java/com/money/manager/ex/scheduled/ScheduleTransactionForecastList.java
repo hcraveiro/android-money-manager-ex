@@ -88,7 +88,11 @@ public class ScheduleTransactionForecastList
     public ScheduleTransactionForecastList getRecurringTransactions(Predicate<RecurringTransaction> predicate) {
 //        List list = this.stream().filter(predicate).collect(Collectors.toList());
         List<RecurringTransaction> list = this.parallelStream().filter(predicate).collect(Collectors.toList());
-        return new ScheduleTransactionForecastList((ArrayList<RecurringTransaction>) list);
+        ScheduleTransactionForecastList filtered =
+            new ScheduleTransactionForecastList(new ArrayList<>(list));
+        filtered.accountCurrencyIds.putAll(accountCurrencyIds);
+        filtered.forecastCurrencyService = forecastCurrencyService;
+        return filtered;
     }
 
     public void orderByDateAscending() {
