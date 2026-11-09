@@ -38,7 +38,7 @@ jobs:
       - name: Verify preinstalled Android SDK
         run: |
           test -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          sdkmanager --version
+          "${ANDROID_HOME:-${ANDROID_SDK_ROOT}}/cmdline-tools/latest/bin/sdkmanager" --version
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
