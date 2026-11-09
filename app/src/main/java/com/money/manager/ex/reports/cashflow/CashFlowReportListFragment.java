@@ -57,6 +57,9 @@ import com.money.manager.ex.database.QueryAccountBills;
 import com.money.manager.ex.database.QueryBillDeposits;
 import com.money.manager.ex.reports.AccountFilterSupport;
 import com.money.manager.ex.domainmodel.RecurringTransaction;
+import com.money.manager.ex.domainmodel.Currency;
+import com.money.manager.ex.scheduled.Recurrence;
+import com.money.manager.ex.scheduled.VirtualRecurringAllocation;
 import com.money.manager.ex.servicelayer.InfoService;
 import com.money.manager.ex.servicelayer.RecurringTransactionService;
 import com.money.manager.ex.settings.AppSettings;
@@ -64,6 +67,9 @@ import com.money.manager.ex.settings.LookAndFeelSettings;
 import com.money.manager.ex.utils.MmxDate;
 import com.money.manager.ex.utils.MmxDateTimeUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -168,8 +174,12 @@ public class CashFlowReportListFragment
             // create recurring transaction
             double amount = cursor.getDouble(cursor.getColumnIndexOrThrow(QueryBillDeposits.AMOUNT));
             RecurringTransaction rx = recurringTransactionService.getSimulatedTransaction();
-            // Virtual forecasts have their own distribution, never a nominal payment.
-            if (rx == null || rx.isVirtual()) continue;
+            if (rx == null) continue;
+            if (rx.isVirtual()) {
+                appendVirtualForecast(cursor, recurringTransactionService, rx,
+                    amount, endDate, listRecurring);
+                continue;
+            }
             if (rx.getPaymentDate().after(endDate.toDate())) {
                 // first occurence of this transaction is over cashflow visibility
                 continue;
@@ -282,6 +292,80 @@ public class CashFlowReportListFragment
                     .add(QueryBillDeposits.AMOUNT, amountTrans.toDouble())
                     .add("transCurrency", transCurrency)
                     .add(BALANCE, totalAmount);
+        }
+    }
+
+    /**
+     * Create virtual rows in memory, prorated by nominal-cycle days and activation date.
+     * Never create posted transactions or change the stored Next Occurrence.
+     */
+    private void appendVirtualForecast(Cursor cursor, RecurringTransactionService service,
+                                       RecurringTransaction schedule, double signedAmount,
+                                       MmxDate endDate,
+                                       List<HashMap<String, Object>> result) {
+        if (schedule.getTransactionType() == TransactionTypes.Transfer
+            || !selectedAccounts.contains(schedule.getAccountId())
+            || schedule.getPaymentDate() == null) return;
+
+        Recurrence repeats = schedule.getRecurrence();
+        String cadence = schedule.getVirtualFrequency();
+        if (!VirtualRecurringAllocation.isValidFrequency(repeats, cadence)) return;
+
+        long currencyId = cursor.getLong(cursor.getColumnIndexOrThrow(QueryBillDeposits.CURRENCYID));
+        Currency currency = currencyService == null ? null : currencyService.getCurrency(currencyId);
+        if (currency == null || currency.getScale() == null || currency.getScale() <= 0)
+            return;
+        int scale = currency.getScale();
+        long amountMinorUnits = BigDecimal.valueOf(signedAmount)
+            .multiply(BigDecimal.valueOf(scale))
+            .setScale(0, RoundingMode.HALF_UP).longValue();
+
+        LocalDate today = LocalDate.parse(new MmxDate().toIsoDateString());
+        LocalDate horizon = LocalDate.parse(endDate.toIsoDateString());
+        String started = schedule.getVirtualStartDate();
+        LocalDate activation = started == null || started.isEmpty()
+            ? today : LocalDate.parse(started);
+
+        String payee = cursor.getString(cursor.getColumnIndexOrThrow(QueryBillDeposits.PAYEENAME));
+        if (payee == null || payee.isEmpty())
+            payee = cursor.getString(cursor.getColumnIndexOrThrow(QueryBillDeposits.ACCOUNTNAME));
+        String displayPayee = (payee == null ? "" : payee) + " (Virtual)";
+        String category = cursor.getString(cursor.getColumnIndexOrThrow(QueryBillDeposits.CATEGNAME));
+        String status = cursor.getString(cursor.getColumnIndexOrThrow(QueryBillDeposits.STATUS));
+        if (status == null) status = "";
+        Long scheduleId = cursor.getLong(cursor.getColumnIndexOrThrow(QueryBillDeposits.BDID));
+        Date nextDue = schedule.getPaymentDate();
+        Long paymentsLeft = schedule.getPaymentsLeft();
+        long remaining = paymentsLeft == null ? -1L : paymentsLeft;
+        for (int cycle = 0; cycle < 10000 && remaining != 0; ++cycle) {
+            LocalDate due = LocalDate.parse(new MmxDate(nextDue).toIsoDateString());
+            if (due.isAfter(horizon)) break;
+            LocalDate previousDue = VirtualRecurringAllocation.previousNominalDue(due, repeats);
+            for (VirtualRecurringAllocation.Entry entry : VirtualRecurringAllocation.allocate(
+                amountMinorUnits, previousDue, due, today, activation, horizon, cadence)) {
+                HashMap<String, Object> row = new HashMap<>();
+                row.put(ID, scheduleId);
+                row.put(QueryBillDeposits.TRANSDATE, entry.date.toString());
+                row.put(QueryBillDeposits.PAYEENAME, displayPayee);
+                row.put(QueryBillDeposits.CATEGNAME, category);
+                row.put(QueryBillDeposits.COLOR,
+                    cursor.getLong(cursor.getColumnIndexOrThrow(QueryBillDeposits.COLOR)));
+                row.put(QueryBillDeposits.ATTACHMENTCOUNT, 0L);
+                row.put(QueryBillDeposits.TAGS, "");
+                row.put(QueryBillDeposits.NOTES,
+                    cursor.getString(cursor.getColumnIndexOrThrow(QueryBillDeposits.NOTES)));
+                row.put(QueryBillDeposits.STATUS, status);
+                row.put(QueryBillDeposits.AMOUNT, entry.minorUnits / (double) scale);
+                row.put("transCurrency", currencyId);
+                row.put(BALANCE, 0);
+                result.add(row);
+            }
+            if (remaining == 1) break;
+            Date advanced = service.getNextScheduledDate(nextDue, repeats,
+                (int) Math.min(Integer.MAX_VALUE, Math.max(0L, remaining)));
+            if (advanced == null || !advanced.after(nextDue)) break;
+            nextDue = advanced;
+            if (remaining > 0) --remaining;
         }
     }
 

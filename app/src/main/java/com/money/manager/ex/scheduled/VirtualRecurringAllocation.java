@@ -50,6 +50,26 @@ public final class VirtualRecurringAllocation {
         return previous;
     }
 
+    public static boolean isValidFrequency(Recurrence recurrence, String frequency) {
+        int nominal;
+        switch (recurrence) {
+            case WEEKLY: nominal = 1; break;
+            case MONTHLY:
+            case MONTHLY_LAST_DAY:
+            case MONTHLY_LAST_BUSINESS_DAY: nominal = 2; break;
+            case QUARTERLY: nominal = 3; break;
+            case ANNUALLY: nominal = 4; break;
+            default: return false;
+        }
+        int cadence;
+        if ("Daily".equals(frequency)) cadence = 0;
+        else if ("Weekly".equals(frequency)) cadence = 1;
+        else if ("Monthly".equals(frequency)) cadence = 2;
+        else if ("Quarterly".equals(frequency)) cadence = 3;
+        else return false;
+        return cadence < nominal;
+    }
+
     private static LocalDate bucketEnd(LocalDate date, LocalDate due, String frequency) {
         switch (frequency) {
             case "Daily":
