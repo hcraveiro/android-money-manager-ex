@@ -159,12 +159,13 @@ public final class VirtualRecurringAllocation {
         if (!advanced.ready) return entries;
         LocalDate due = advanced.nextDue;
         long remaining = advanced.paymentsLeft;
-        for (int cycle = 0; cycle < 10000 && !due.isAfter(horizon)
-             && remaining != 0; ++cycle) {
+        for (int cycle = 0; cycle < 10000 && remaining != 0; ++cycle) {
             LocalDate previousDue = previousNominalDue(due, recurrence);
+            if (!previousDue.isBefore(horizon)) break;
             entries.addAll(allocate(amountMinorUnits, previousDue, due,
                 today, activated, horizon, frequency));
-            if (remaining == 1) break;
+            // Include the partial final cycle even if its due date is later.
+            if (remaining == 1 || !due.isBefore(horizon)) break;
             LocalDate next = nextNominalDue(due, recurrence);
             if (!next.isAfter(due)) break;
             due = next;
