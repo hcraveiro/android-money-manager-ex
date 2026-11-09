@@ -474,7 +474,6 @@ public class ScheduledTransactionEditActivity
         Date nextDue = transaction.getDueDate();
         if (nextPayment == null || nextDue == null) return false;
 
-        RecurringTransactionService service = new RecurringTransactionService(this);
         Recurrence recurrence = transaction.getRecurrence();
         LocalDate today = LocalDate.parse(new MmxDate().toIsoDateString());
         Long paymentsLeft = transaction.getPaymentsLeft();
@@ -484,14 +483,16 @@ public class ScheduledTransactionEditActivity
              !LocalDate.parse(new MmxDate(nextPayment).toIsoDateString()).isAfter(today); ++i) {
             if (remaining == 0 || remaining == 1) return false;
 
-            Date advancedPayment = service.getNextScheduledDate(
-                nextPayment, recurrence, (int) Math.min(Integer.MAX_VALUE, Math.max(0, remaining)));
-            Date advancedDue = service.getNextScheduledDate(
-                nextDue, recurrence, (int) Math.min(Integer.MAX_VALUE, Math.max(0, remaining)));
-            if (advancedPayment == null || !advancedPayment.after(nextPayment)
-                || advancedDue == null || !advancedDue.after(nextDue)) return false;
-            nextPayment = advancedPayment;
-            nextDue = advancedDue;
+            LocalDate paymentDate = LocalDate.parse(new MmxDate(nextPayment).toIsoDateString());
+            LocalDate dueDate = LocalDate.parse(new MmxDate(nextDue).toIsoDateString());
+            LocalDate advancedPayment = VirtualRecurringAllocation.nextNominalDue(
+                paymentDate, recurrence);
+            LocalDate advancedDue = VirtualRecurringAllocation.nextNominalDue(
+                dueDate, recurrence);
+            if (!advancedPayment.isAfter(paymentDate) || !advancedDue.isAfter(dueDate))
+                return false;
+            nextPayment = MmxDate.from(advancedPayment.toString(), "yyyy-MM-dd");
+            nextDue = MmxDate.from(advancedDue.toString(), "yyyy-MM-dd");
             if (remaining > 0) remaining--;
         }
         if (!LocalDate.parse(new MmxDate(nextPayment).toIsoDateString()).isAfter(today))
@@ -527,6 +528,11 @@ public class ScheduledTransactionEditActivity
                     Toast.LENGTH_LONG).show();
                 return false;
             }
+            // Retain the last selected cadence when turning the virtual mode off.
+            String frequency = virtualFrequencySpinner == null
+                ? null : (String) virtualFrequencySpinner.getSelectedItem();
+            if (VirtualRecurringAllocation.isValidFrequency(transaction.getRecurrence(), frequency))
+                transaction.setVirtualFrequency(frequency);
             transaction.setVirtual(false);
             transaction.setVirtualStartDate(null);
         }
