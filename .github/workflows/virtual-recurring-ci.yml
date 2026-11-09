@@ -47,7 +47,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: hcraveiro/database
-          ref: f42a4fd45c78bcc2a9fd8ec9c134a101078b0758
+          ref: d8c1a0fe256d7ca3d5546f3259781535827916da
           path: acceptance-fixtures
           persist-credentials: false
 
