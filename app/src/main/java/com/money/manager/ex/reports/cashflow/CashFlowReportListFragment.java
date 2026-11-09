@@ -54,6 +54,7 @@ import com.money.manager.ex.core.TransactionTypes;
 import com.money.manager.ex.core.UIHelper;
 import com.money.manager.ex.currency.CurrencyService;
 import com.money.manager.ex.database.QueryAccountBills;
+import com.money.manager.ex.database.QueryAllData;
 import com.money.manager.ex.database.QueryBillDeposits;
 import com.money.manager.ex.reports.AccountFilterSupport;
 import com.money.manager.ex.domainmodel.RecurringTransaction;
@@ -244,6 +245,10 @@ public class CashFlowReportListFragment
         cursor.close();
         }
 
+        // Account totals include posted future transactions. Move their effects
+        // into dated forecast rows without touching the persisted ledger.
+        appendPostedFutureTransactions(context, endDate, listRecurring);
+
         listRecurring.sort(Comparator.comparing((HashMap<String, Object> uno) -> uno.get(QueryBillDeposits.TRANSDATE).toString()));
 
         long baseCurrencyId = (currencyService != null) ? currencyService.getBaseCurrencyId() : 0;
@@ -360,6 +365,105 @@ public class CashFlowReportListFragment
                 row.put(BALANCE, 0);
                 result.add(row);
         }
+    }
+
+    /**
+     * Preserve posted future transactions independently of virtual forecasts.
+     * Account balance queries already include these rows, so exclude them from
+     * the opening balance before adding them at their actual future dates.
+     */
+    private void appendPostedFutureTransactions(Context context, MmxDate endDate,
+                                                List<HashMap<String, Object>> result) {
+        QueryAllData posted = new QueryAllData(context);
+        LocalDate today = LocalDate.parse(new MmxDate().toIsoDateString());
+        LocalDate horizon = LocalDate.parse(endDate.toIsoDateString());
+        try (Cursor cursor = context.getContentResolver().query(
+                posted.getUri(), posted.getAllColumns(),
+                QueryAllData.Date + " > ?", new String[]{today.toString()},
+                QueryAllData.Date)) {
+            if (cursor == null) return;
+            while (cursor.moveToNext()) {
+                String status = cursor.getString(
+                    cursor.getColumnIndexOrThrow(QueryAllData.STATUS));
+                if (!"R".equals(status) && !"F".equals(status)
+                    && !"D".equals(status) && !"".equals(status)) continue;
+
+                String dateValue = cursor.getString(
+                    cursor.getColumnIndexOrThrow(QueryAllData.Date));
+                if (dateValue == null || dateValue.length() < 10) continue;
+                LocalDate date = LocalDate.parse(dateValue.substring(0, 10));
+
+                long sourceAccount = cursor.getLong(
+                    cursor.getColumnIndexOrThrow(QueryAllData.ACCOUNTID));
+                long sourceCurrency = cursor.getLong(
+                    cursor.getColumnIndexOrThrow(QueryAllData.CURRENCYID));
+                double signedSourceAmount = cursor.getDouble(
+                    cursor.getColumnIndexOrThrow(QueryAllData.AMOUNT));
+                if (selectedAccounts.contains(sourceAccount)) {
+                    appendPostedFutureMovement(cursor, date, horizon,
+                        signedSourceAmount, sourceCurrency, result);
+                }
+
+                String type = cursor.getString(
+                    cursor.getColumnIndexOrThrow(QueryAllData.TransactionType));
+                if ("Transfer".equals(type)) {
+                    long destinationAccount = cursor.getLong(
+                        cursor.getColumnIndexOrThrow(QueryAllData.TXTOACCOUNTID));
+                    if (destinationAccount > 0 && selectedAccounts.contains(destinationAccount)) {
+                        double destinationAmount = cursor.getDouble(
+                            cursor.getColumnIndexOrThrow(QueryAllData.ToAmount));
+                        long destinationCurrency = cursor.getLong(
+                            cursor.getColumnIndexOrThrow(QueryAllData.ToCurrencyId));
+                        appendPostedFutureMovement(cursor, date, horizon,
+                            destinationAmount, destinationCurrency, result);
+                    }
+                }
+            }
+        } catch (Exception error) {
+            Timber.e(error, "Unable to include posted future transactions in Cash Flow");
+        }
+    }
+
+    private void appendPostedFutureMovement(Cursor cursor, LocalDate date,
+                                            LocalDate horizon, double signedAmount,
+                                            long currencyId,
+                                            List<HashMap<String, Object>> result) {
+        Money amount = MoneyFactory.fromDouble(signedAmount);
+        long baseCurrencyId = currencyService == null
+            ? currencyId : currencyService.getBaseCurrencyId();
+        Money baseAmount = currencyService == null ? amount
+            : currencyService.doCurrencyExchange(baseCurrencyId, amount, currencyId);
+        totalAmount -= baseAmount.toDouble();
+
+        // Future postings beyond the report window still affect the original
+        // account total, but must not appear inside the selected horizon.
+        if (date.isAfter(horizon)) return;
+
+        HashMap<String, Object> row = new HashMap<>();
+        row.put(ID, cursor.getLong(cursor.getColumnIndexOrThrow(QueryAllData.ID)));
+        row.put(QueryBillDeposits.TRANSDATE, date.toString());
+        String payee = cursor.getString(
+            cursor.getColumnIndexOrThrow(QueryAllData.PAYEENAME));
+        if (payee == null || payee.isEmpty())
+            payee = cursor.getString(cursor.getColumnIndexOrThrow(QueryAllData.AccountName));
+        row.put(QueryBillDeposits.PAYEENAME, payee);
+        String category = cursor.getString(
+            cursor.getColumnIndexOrThrow(QueryAllData.Category));
+        row.put(QueryBillDeposits.CATEGNAME, category == null ? "" : category);
+        row.put(QueryBillDeposits.COLOR, cursor.getLong(
+            cursor.getColumnIndexOrThrow(QueryAllData.COLOR)));
+        row.put(QueryBillDeposits.ATTACHMENTCOUNT, cursor.getLong(
+            cursor.getColumnIndexOrThrow(QueryAllData.ATTACHMENTCOUNT)));
+        row.put(QueryBillDeposits.TAGS, cursor.getString(
+            cursor.getColumnIndexOrThrow(QueryAllData.TAGS)));
+        row.put(QueryBillDeposits.NOTES, cursor.getString(
+            cursor.getColumnIndexOrThrow(QueryAllData.Notes)));
+        row.put(QueryBillDeposits.STATUS, cursor.getString(
+            cursor.getColumnIndexOrThrow(QueryAllData.STATUS)));
+        row.put(QueryBillDeposits.AMOUNT, signedAmount);
+        row.put("transCurrency", currencyId);
+        row.put(BALANCE, 0);
+        result.add(row);
     }
 
     private void getTotalAmountAndAccounts() {
