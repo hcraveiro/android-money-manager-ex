@@ -131,6 +131,7 @@ public class ScheduledTransactionForecastListServices {
                 scheduleTransactionForecastList.setAccountCurrency(
                     rx.getAccountId(), accountCurrencyId);
                 if (rx.isVirtual()) {
+                    if ("V".equals(rx.getStatus())) continue;
                     if (rx.getTransactionType() == TransactionTypes.Transfer
                         || !VirtualRecurringAllocation.isValidFrequency(
                             rx.getRecurrence(), rx.getVirtualFrequency())) continue;
