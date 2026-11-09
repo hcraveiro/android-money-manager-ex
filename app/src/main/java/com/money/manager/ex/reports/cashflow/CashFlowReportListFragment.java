@@ -176,8 +176,7 @@ public class CashFlowReportListFragment
             RecurringTransaction rx = recurringTransactionService.getSimulatedTransaction();
             if (rx == null) continue;
             if (rx.isVirtual()) {
-                appendVirtualForecast(cursor, recurringTransactionService, rx,
-                    amount, endDate, listRecurring);
+                appendVirtualForecast(cursor, rx, amount, endDate, listRecurring);
                 continue;
             }
             if (rx.getPaymentDate().after(endDate.toDate())) {
@@ -299,8 +298,8 @@ public class CashFlowReportListFragment
      * Create virtual rows in memory, prorated by nominal-cycle days and activation date.
      * Never create posted transactions or change the stored Next Occurrence.
      */
-    private void appendVirtualForecast(Cursor cursor, RecurringTransactionService service,
-                                       RecurringTransaction schedule, double signedAmount,
+    private void appendVirtualForecast(Cursor cursor, RecurringTransaction schedule,
+                                       double signedAmount,
                                        MmxDate endDate,
                                        List<HashMap<String, Object>> result) {
         if (schedule.getTransactionType() == TransactionTypes.Transfer
@@ -334,15 +333,13 @@ public class CashFlowReportListFragment
         String status = cursor.getString(cursor.getColumnIndexOrThrow(QueryBillDeposits.STATUS));
         if (status == null) status = "";
         Long scheduleId = cursor.getLong(cursor.getColumnIndexOrThrow(QueryBillDeposits.BDID));
-        Date nextDue = schedule.getPaymentDate();
+        LocalDate nextDue = LocalDate.parse(new MmxDate(
+            schedule.getPaymentDate()).toIsoDateString());
         Long paymentsLeft = schedule.getPaymentsLeft();
-        long remaining = paymentsLeft == null ? -1L : paymentsLeft;
-        for (int cycle = 0; cycle < 10000 && remaining != 0; ++cycle) {
-            LocalDate due = LocalDate.parse(new MmxDate(nextDue).toIsoDateString());
-            if (due.isAfter(horizon)) break;
-            LocalDate previousDue = VirtualRecurringAllocation.previousNominalDue(due, repeats);
-            for (VirtualRecurringAllocation.Entry entry : VirtualRecurringAllocation.allocate(
-                amountMinorUnits, previousDue, due, today, activation, horizon, cadence)) {
+        for (VirtualRecurringAllocation.Entry entry : VirtualRecurringAllocation.project(
+            amountMinorUnits, nextDue, repeats,
+            paymentsLeft == null ? -1L : paymentsLeft,
+            today, activation, horizon, cadence)) {
                 HashMap<String, Object> row = new HashMap<>();
                 row.put(ID, scheduleId);
                 row.put(QueryBillDeposits.TRANSDATE, entry.date.toString());
@@ -359,20 +356,6 @@ public class CashFlowReportListFragment
                 row.put("transCurrency", currencyId);
                 row.put(BALANCE, 0);
                 result.add(row);
-            }
-            if (remaining == 1) break;
-            Date advanced;
-            if (repeats == Recurrence.MONTHLY_LAST_DAY
-                || repeats == Recurrence.MONTHLY_LAST_BUSINESS_DAY) {
-                LocalDate advancedDue = VirtualRecurringAllocation.nextNominalDue(due, repeats);
-                advanced = MmxDate.from(advancedDue.toString(), "yyyy-MM-dd");
-            } else {
-                advanced = service.getNextScheduledDate(nextDue, repeats,
-                    (int) Math.min(Integer.MAX_VALUE, Math.max(0L, remaining)));
-            }
-            if (advanced == null || !advanced.after(nextDue)) break;
-            nextDue = advanced;
-            if (remaining > 0) --remaining;
         }
     }
 
