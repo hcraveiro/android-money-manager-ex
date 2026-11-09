@@ -475,6 +475,7 @@ public class ScheduledTransactionEditActivity
         if (nextPayment == null || nextDue == null) return false;
 
         Recurrence recurrence = transaction.getRecurrence();
+        RecurringTransactionService service = new RecurringTransactionService(this);
         LocalDate today = LocalDate.parse(new MmxDate().toIsoDateString());
         Long paymentsLeft = transaction.getPaymentsLeft();
         long remaining = paymentsLeft == null ? Constants.NOT_SET : paymentsLeft;
@@ -483,16 +484,28 @@ public class ScheduledTransactionEditActivity
              !LocalDate.parse(new MmxDate(nextPayment).toIsoDateString()).isAfter(today); ++i) {
             if (remaining == 0 || remaining == 1) return false;
 
-            LocalDate paymentDate = LocalDate.parse(new MmxDate(nextPayment).toIsoDateString());
-            LocalDate dueDate = LocalDate.parse(new MmxDate(nextDue).toIsoDateString());
-            LocalDate advancedPayment = VirtualRecurringAllocation.nextNominalDue(
-                paymentDate, recurrence);
-            LocalDate advancedDue = VirtualRecurringAllocation.nextNominalDue(
-                dueDate, recurrence);
-            if (!advancedPayment.isAfter(paymentDate) || !advancedDue.isAfter(dueDate))
-                return false;
-            nextPayment = MmxDate.from(advancedPayment.toString(), "yyyy-MM-dd");
-            nextDue = MmxDate.from(advancedDue.toString(), "yyyy-MM-dd");
+            Date advancedPayment;
+            Date advancedDue;
+            if (recurrence == Recurrence.MONTHLY_LAST_DAY
+                || recurrence == Recurrence.MONTHLY_LAST_BUSINESS_DAY) {
+                LocalDate paymentDate = LocalDate.parse(new MmxDate(nextPayment).toIsoDateString());
+                LocalDate dueDate = LocalDate.parse(new MmxDate(nextDue).toIsoDateString());
+                advancedPayment = MmxDate.from(
+                    VirtualRecurringAllocation.nextNominalDue(paymentDate, recurrence).toString(),
+                    "yyyy-MM-dd");
+                advancedDue = MmxDate.from(
+                    VirtualRecurringAllocation.nextNominalDue(dueDate, recurrence).toString(),
+                    "yyyy-MM-dd");
+            } else {
+                advancedPayment = service.getNextScheduledDate(
+                    nextPayment, recurrence, (int) Math.min(Integer.MAX_VALUE, Math.max(0, remaining)));
+                advancedDue = service.getNextScheduledDate(
+                    nextDue, recurrence, (int) Math.min(Integer.MAX_VALUE, Math.max(0, remaining)));
+            }
+            if (advancedPayment == null || !advancedPayment.after(nextPayment)
+                || advancedDue == null || !advancedDue.after(nextDue)) return false;
+            nextPayment = advancedPayment;
+            nextDue = advancedDue;
             if (remaining > 0) remaining--;
         }
         if (!LocalDate.parse(new MmxDate(nextPayment).toIsoDateString()).isAfter(today))
