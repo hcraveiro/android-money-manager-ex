@@ -145,7 +145,7 @@ public class RecurringTransaction
     }
 
     public Money getRealSignedAmount() {
-        if ( this.getStatus().equals("V") || this.getTransactionType().equals(TransactionTypes.Transfer) ) {
+        if ("V".equals(this.getStatus()) || this.getTransactionType().equals(TransactionTypes.Transfer)) {
             return MoneyFactory.fromDouble(0);
         } else if (getTransactionType().equals(TransactionTypes.Deposit)) {
             return getAmount();
