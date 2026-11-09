@@ -55,8 +55,8 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
     /**
      * Database schema version.
      */
-    private static final int DATABASE_VERSION_MIN = 20;
-    private static final int DATABASE_VERSION_MAX = 21;
+    private static final int DATABASE_VERSION_MIN = 22;
+    private static final int DATABASE_VERSION_MAX = 22;
     private final String dbPath;
 
     private int originalVersion;
@@ -393,7 +393,7 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
         File outFile = new File(currentDbFile);
         String folder = outFile.getParent();
         //String outPath = FilenameUtils.getFullPath(currentDbFile) + backupFileNameWithExtension;
-        String outPath = folder + backupFileNameWithExtension;
+        String outPath = new File(folder, backupFileNameWithExtension).getAbsolutePath();
         File out = new File(outPath);
 
         //FileUtils.copyFile(in, out);

@@ -48,6 +48,9 @@ public class QueryBillDeposits
     public static String TRANSAMOUNT = "TRANSAMOUNT";
     public static String NEXTOCCURRENCEDATE = "NEXTOCCURRENCEDATE";
     public static String REPEATS = "REPEATS";
+    public static String ISVIRTUAL = "ISVIRTUAL";
+    public static String VIRTUALFREQUENCY = "VIRTUALFREQUENCY";
+    public static String VIRTUALSTARTDATE = "VIRTUALSTARTDATE";
     public static String DAYSLEFT = "DAYSLEFT";
     public static String NOTES = "NOTES";
     public static String STATUS = "STATUS";
@@ -67,6 +70,7 @@ public class QueryBillDeposits
         return new String[]{BDID + " AS _id", BDID, PAYEEID, PAYEENAME, TOACCOUNTID, TOACCOUNTNAME, ATTACHMENTCOUNT,
                 ACCOUNTID, ACCOUNTNAME, CURRENCYID,
                 CATEGID, CATEGNAME, TRANSCODE, TRANSAMOUNT, NEXTOCCURRENCEDATE, REPEATS,
+                ISVIRTUAL, VIRTUALFREQUENCY, VIRTUALSTARTDATE,
                 DAYSLEFT, NOTES, STATUS, NUMOCCURRENCES, TOTRANSAMOUNT,
                 TRANSACTIONNUMBER, TRANSDATE, AMOUNT, TAGS, SPLITTED, COLOR};
 

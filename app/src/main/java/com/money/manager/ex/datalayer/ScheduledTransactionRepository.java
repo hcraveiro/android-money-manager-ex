@@ -68,7 +68,10 @@ public class ScheduledTransactionRepository
                 ITransactionEntity.TOTRANSAMOUNT,
                 RecurringTransaction.REPEATS,
                 RecurringTransaction.NEXTOCCURRENCEDATE,
-                RecurringTransaction.NUMOCCURRENCES};
+                RecurringTransaction.NUMOCCURRENCES,
+                RecurringTransaction.ISVIRTUAL,
+                RecurringTransaction.VIRTUALFREQUENCY,
+                RecurringTransaction.VIRTUALSTARTDATE};
     }
 
     @Override

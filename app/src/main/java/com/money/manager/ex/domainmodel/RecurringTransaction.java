@@ -47,6 +47,9 @@ public class RecurringTransaction
 
     public static final String BDID = "BDID";
     public static final String REPEATS = "REPEATS";
+    public static final String ISVIRTUAL = "ISVIRTUAL";
+    public static final String VIRTUALFREQUENCY = "VIRTUALFREQUENCY";
+    public static final String VIRTUALSTARTDATE = "VIRTUALSTARTDATE";
 
     private ArrayList<Attachment> mAttachments;
     private ArrayList<TagLink> tagLinks = null;
@@ -245,6 +248,31 @@ public class RecurringTransaction
 
     public void setNotes(String value) {
         setString(ITransactionEntity.NOTES, value);
+    }
+
+    public boolean isVirtual() {
+        Integer value = getInt(ISVIRTUAL);
+        return value != null && value == 1;
+    }
+
+    public void setVirtual(boolean enabled) {
+        setInt(ISVIRTUAL, enabled ? 1 : 0);
+    }
+
+    public String getVirtualFrequency() {
+        return getString(VIRTUALFREQUENCY);
+    }
+
+    public void setVirtualFrequency(String frequency) {
+        setString(VIRTUALFREQUENCY, frequency);
+    }
+
+    public String getVirtualStartDate() {
+        return getString(VIRTUALSTARTDATE);
+    }
+
+    public void setVirtualStartDate(String isoDate) {
+        setString(VIRTUALSTARTDATE, isoDate);
     }
 
     public Long getPaymentsLeft() {

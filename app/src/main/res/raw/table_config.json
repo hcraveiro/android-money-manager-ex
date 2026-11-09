@@ -152,7 +152,10 @@
         "REPEATS",
         "NEXTOCCURRENCEDATE",
         "NUMOCCURRENCES",
-        "COLOR"
+        "COLOR",
+        "ISVIRTUAL",
+        "VIRTUALFREQUENCY",
+        "VIRTUALSTARTDATE"
       ],
       "unique": []
     },
