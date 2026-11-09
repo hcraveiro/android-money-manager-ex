@@ -168,6 +168,8 @@ public class CashFlowReportListFragment
             // create recurring transaction
             double amount = cursor.getDouble(cursor.getColumnIndexOrThrow(QueryBillDeposits.AMOUNT));
             RecurringTransaction rx = recurringTransactionService.getSimulatedTransaction();
+            // Virtual forecasts have their own distribution, never a nominal payment.
+            if (rx == null || rx.isVirtual()) continue;
             if (rx.getPaymentDate().after(endDate.toDate())) {
                 // first occurence of this transaction is over cashflow visibility
                 continue;

@@ -198,6 +198,10 @@ public class RecurringTransactionProcess {
         CurrencyService currencyService = new CurrencyService(mContext);
 
         while (cursor.moveToNext()) {
+            // Virtual schedules are forecast-only: never notify or auto-post them.
+            if (cursor.getInt(cursor.getColumnIndexOrThrow(QueryBillDeposits.ISVIRTUAL)) != 0)
+                continue;
+
             @SuppressLint("Range") String payeeName = cursor.getString(cursor.getColumnIndexOrThrow(QueryBillDeposits.PAYEENAME));
 
             // EP get recurring mode

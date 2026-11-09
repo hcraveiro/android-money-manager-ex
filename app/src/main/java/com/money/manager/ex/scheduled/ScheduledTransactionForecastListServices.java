@@ -114,6 +114,9 @@ public class ScheduledTransactionForecastListServices {
             while (cursor.moveToNext()) {
                 @SuppressLint("Range") RecurringTransactionService recurringTransactionService = new RecurringTransactionService(cursor.getLong(cursor.getColumnIndexOrThrow(QueryBillDeposits.BDID)), context);
                 RecurringTransaction rx = recurringTransactionService.getSimulatedTransactionAsClone();
+                // This list does not yet allocate virtual schedules by frequency.
+                // Do not represent them as nominal, real future payments.
+                if (rx == null || rx.isVirtual()) continue;
                 Timber.d("Recurring Transaction: %s", rx.toString());
                 if (rx.getPaymentDate().after(mDateTo.toDate())) {
                     // first occurrence of this transaction is over cash flow visibility

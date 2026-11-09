@@ -322,7 +322,7 @@ public class ScheduledTransactionListFragment
     private void showCreateTransactionActivity(long scheduledTransactionId) {
         ScheduledTransactionRepository repo = new ScheduledTransactionRepository(getActivity());
         RecurringTransaction tx = repo.load(scheduledTransactionId);
-        if (tx == null) return;
+        if (tx == null || tx.isVirtual()) return;
 
         Intent intent = new Intent(getActivity(), CheckingTransactionEditActivity.class);
         intent.setAction(Intent.ACTION_INSERT);

@@ -185,6 +185,7 @@ public class RecurringTransactionService
             return;
         }
         RecurringTransaction tx = getRecurringTransaction();
+        if (tx != null && tx.isVirtual()) return;
         if (tx == null) {
             // Issue #1969 - See dump on gPlay. Some time recurringTransactionId is not found on the database.
             //throw new IllegalArgumentException("Recurring Transaction is not set!");
@@ -470,6 +471,9 @@ public class RecurringTransactionService
         return (scheduledTrx == null) ? null : getAccountTransactionFromRecurring( scheduledTrx ) ;
     }
     public AccountTransaction getAccountTransactionFromRecurring (@NonNull RecurringTransaction scheduledTrx) {
+        if (scheduledTrx.isVirtual())
+            throw new IllegalStateException("Virtual recurring transactions cannot be posted");
+
         AccountTransaction accountTrx = AccountTransaction.create();
         accountTrx.setDate(scheduledTrx.getPaymentDate());
         accountTrx.setAccountId(scheduledTrx.getAccountId());
