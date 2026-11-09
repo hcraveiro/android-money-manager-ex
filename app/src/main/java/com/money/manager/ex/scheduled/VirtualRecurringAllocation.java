@@ -3,6 +3,7 @@ package com.money.manager.ex.scheduled;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -214,6 +215,47 @@ public final class VirtualRecurringAllocation {
 
         LocalDate last = due.isBefore(horizon) ? due : horizon;
         if (last.isBefore(first)) return result;
+
+        if ("Monthly".equals(frequency) || "Quarterly".equals(frequency)) {
+            // Calendar buckets carry equal shares irrespective of month length.
+            // Only an incomplete bucket is prorated by its own elapsed days.
+            int step = "Monthly".equals(frequency) ? 1 : 3;
+            List<LocalDate> ends = new ArrayList<>();
+            for (int months = 0; months <= 24; months += step) {
+                LocalDate candidate = due.minusMonths(months);
+                if (!candidate.isAfter(previousDue)) break;
+                ends.add(candidate);
+            }
+            Collections.reverse(ends);
+            if (ends.isEmpty()) return result;
+            int count = ends.size();
+            long quotient = amountMinorUnits / count;
+            long remainder = amountMinorUnits % count;
+            LocalDate bucketStart = previousDue.plusDays(1);
+            for (int i = 0; i < count; ++i) {
+                LocalDate bucketEnd = ends.get(i);
+                int length = (int) ChronoUnit.DAYS.between(bucketStart, bucketEnd) + 1;
+                long share = quotient + ((i + 1) * remainder) / count
+                    - (i * remainder) / count;
+                LocalDate begin = bucketStart.isAfter(first) ? bucketStart : first;
+                LocalDate finish = bucketEnd.isBefore(last) ? bucketEnd : last;
+                if (!begin.isAfter(finish)) {
+                    long amount = 0;
+                    long dailyBase = share / length;
+                    long dailyRemainder = share % length;
+                    for (LocalDate day = begin; !day.isAfter(finish);
+                         day = day.plusDays(1)) {
+                        int offset = (int) ChronoUnit.DAYS.between(bucketStart, day);
+                        amount += dailyBase
+                            + ((offset + 1) * dailyRemainder) / length
+                            - (offset * dailyRemainder) / length;
+                    }
+                    if (amount != 0) result.add(new Entry(finish, amount));
+                }
+                bucketStart = bucketEnd.plusDays(1);
+            }
+            return result;
+        }
 
         Map<LocalDate, Long> grouped = new TreeMap<>();
         long quotient = amountMinorUnits / cycleDays;
