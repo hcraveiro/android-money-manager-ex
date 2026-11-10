@@ -109,15 +109,13 @@ public final class VirtualRecurringAllocation {
         public final long paymentsLeft;
         public final int skipped;
         public final boolean ready;
-        public final LocalDate previousDue;
 
         private AdvanceResult(LocalDate nextDue, long paymentsLeft, int skipped,
-                              boolean ready, LocalDate previousDue) {
+                              boolean ready) {
             this.nextDue = nextDue;
             this.paymentsLeft = paymentsLeft;
             this.skipped = skipped;
             this.ready = ready;
-            this.previousDue = previousDue;
         }
     }
 
@@ -128,24 +126,22 @@ public final class VirtualRecurringAllocation {
     public static AdvanceResult advanceElapsed(LocalDate nextDue, Recurrence recurrence,
                                                long paymentsLeft, LocalDate today) {
         if (nextDue == null || today == null || paymentsLeft == 0)
-            return new AdvanceResult(nextDue, paymentsLeft, 0, false, null);
+            return new AdvanceResult(nextDue, paymentsLeft, 0, false);
 
         LocalDate due = nextDue;
-        LocalDate previous = null;
         long remaining = paymentsLeft;
         for (int skipped = 0; skipped < 10000; ++skipped) {
             if (due.isAfter(today))
-                return new AdvanceResult(due, remaining, skipped, true, previous);
+                return new AdvanceResult(due, remaining, skipped, true);
             if (remaining == 1)
-                return new AdvanceResult(due, remaining, skipped, false, previous);
+                return new AdvanceResult(due, remaining, skipped, false);
             LocalDate advanced = nextNominalDue(due, recurrence);
             if (!advanced.isAfter(due))
-                return new AdvanceResult(due, remaining, skipped, false, previous);
-            previous = due;
+                return new AdvanceResult(due, remaining, skipped, false);
             due = advanced;
             if (remaining > 0) --remaining;
         }
-        return new AdvanceResult(due, remaining, 10000, false, previous);
+        return new AdvanceResult(due, remaining, 10000, false);
     }
 
     /**
@@ -163,8 +159,8 @@ public final class VirtualRecurringAllocation {
         AdvanceResult advanced = advanceElapsed(nextDue, recurrence, paymentsLeft, today);
         if (!advanced.ready) return entries;
         LocalDate due = advanced.nextDue;
-        LocalDate previousDue = advanced.previousDue != null
-            ? advanced.previousDue : previousNominalDue(due, recurrence);
+        // Infer the first calendar cycle, then keep actual subsequent due dates.
+        LocalDate previousDue = previousNominalDue(due, recurrence);
         long remaining = advanced.paymentsLeft;
         for (int cycle = 0; cycle < 10000 && remaining != 0; ++cycle) {
             if (!previousDue.isBefore(horizon)) break;
