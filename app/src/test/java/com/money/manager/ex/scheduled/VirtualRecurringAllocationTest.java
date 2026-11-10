@@ -157,6 +157,43 @@ public class VirtualRecurringAllocationTest {
     }
 
     @Test
+    public void shortFebruaryPreservesJanuaryThirtyFirstAcrossMonthlyCycles() {
+        // The nominal dates are Nov 30, Dec 30, Jan 30, then Feb 28.
+        // The next cycle begins on Jan 31, not on Feb 1.
+        List<VirtualRecurringAllocation.Entry> projections =
+            VirtualRecurringAllocation.project(3000,
+                LocalDate.of(2026, 11, 30), Recurrence.MONTHLY, -1,
+                LocalDate.of(2026, 11, 20), LocalDate.of(2026, 11, 20),
+                LocalDate.of(2027, 2, 28), "Weekly");
+
+        LocalDate[] dates = {
+            LocalDate.of(2027, 1, 31), LocalDate.of(2027, 2, 7),
+            LocalDate.of(2027, 2, 14), LocalDate.of(2027, 2, 21),
+            LocalDate.of(2027, 2, 28)
+        };
+        long[] cents = {103, 724, 724, 724, 725};
+        int found = 0;
+        long total = 0;
+        for (VirtualRecurringAllocation.Entry entry : projections) {
+            if (entry.date.isBefore(dates[0])) continue;
+            assertTrue(found < dates.length);
+            assertEquals(dates[found], entry.date);
+            assertEquals(cents[found], entry.minorUnits);
+            total += entry.minorUnits;
+            found++;
+        }
+        assertEquals(5, found);
+        assertEquals(3000, total);
+
+        VirtualRecurringAllocation.AdvanceResult advanced =
+            VirtualRecurringAllocation.advanceElapsed(
+                LocalDate.of(2027, 1, 30), Recurrence.MONTHLY,
+                -1, LocalDate.of(2027, 2, 1));
+        assertEquals(LocalDate.of(2027, 2, 28), advanced.nextDue);
+        assertEquals(LocalDate.of(2027, 1, 30), advanced.previousDue);
+    }
+
+    @Test
     public void monthEndNominalAdvancementRemainsAnchored() {
         assertEquals(LocalDate.of(2026, 12, 31),
             VirtualRecurringAllocation.nextNominalDue(
