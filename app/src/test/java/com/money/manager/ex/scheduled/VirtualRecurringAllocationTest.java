@@ -190,7 +190,7 @@ public class VirtualRecurringAllocationTest {
                 LocalDate.of(2027, 1, 30), Recurrence.MONTHLY,
                 -1, LocalDate.of(2027, 2, 1));
         assertEquals(LocalDate.of(2027, 2, 28), advanced.nextDue);
-        assertEquals(LocalDate.of(2027, 1, 30), advanced.previousDue);
+        assertEquals(1, advanced.skipped);
     }
 
     @Test
