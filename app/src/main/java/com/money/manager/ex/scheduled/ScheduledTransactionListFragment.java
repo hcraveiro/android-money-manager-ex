@@ -23,6 +23,7 @@ import android.database.Cursor;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.ContextMenu;
+import android.view.Menu;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
@@ -144,12 +145,18 @@ public class ScheduledTransactionListFragment
         AdapterView.AdapterContextMenuInfo info = (AdapterView.AdapterContextMenuInfo) menuInfo;
         // take a cursor and move to position
         Cursor cursor = ((AllDataAdapter) getListAdapter()).getCursor();
-        if (cursor != null) {
-            cursor.moveToPosition(info.position);
+        if (cursor != null && cursor.moveToPosition(info.position)) {
             // set title and inflate menu
             menu.setHeaderTitle(getActivity().getTitle());
             getActivity().getMenuInflater().inflate(R.menu.contextmenu_repeating_transactions, menu);
+            configureOccurrenceActions(menu,
+                    cursor.getInt(cursor.getColumnIndexOrThrow(QueryBillDeposits.ISVIRTUAL)) != 0);
         }
+    }
+
+    static void configureOccurrenceActions(Menu menu, boolean isVirtual) {
+        menu.findItem(R.id.menu_enter_next_occurrence).setVisible(!isVirtual).setEnabled(!isVirtual);
+        menu.findItem(R.id.menu_skip_next_occurrence).setVisible(!isVirtual).setEnabled(!isVirtual);
     }
 
     @Override
@@ -291,6 +298,10 @@ public class ScheduledTransactionListFragment
     }
 
     private void confirmSkip(final long id) {
+        ScheduledTransactionRepository repo = new ScheduledTransactionRepository(getActivity());
+        RecurringTransaction tx = repo.load(id);
+        if (tx == null || tx.isVirtual()) return;
+
         UIHelper ui = new UIHelper(getContext());
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());

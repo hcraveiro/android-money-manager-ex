@@ -137,6 +137,8 @@ public class AllDataAdapter
         // take a holder
         AllDataViewHolder holder = (AllDataViewHolder) view.getTag();
 
+        bindVirtualLabel(view.findViewById(R.id.textViewVirtualFrequency), cursor);
+
         String transactionType = cursor.getString(cursor.getColumnIndexOrThrow(TRANSACTIONTYPE));
         boolean isTransfer = TransactionTypes.valueOf(transactionType).equals(TransactionTypes.Transfer);
         boolean isStockLinked = isStockLinkedTransaction(cursor);
@@ -319,6 +321,35 @@ public class AllDataAdapter
         } else {
             holder.viewColor.setVisibility(View.GONE);
         }
+    }
+
+    void bindVirtualLabel(TextView label, Cursor cursor) {
+        // Reset recycled rows, including ordinary account transactions without virtual columns.
+        label.setText(null);
+        label.setVisibility(View.GONE);
+        if (mTypeCursor != TypeCursor.RECURRINGTRANSACTION) {
+            return;
+        }
+        int virtualIndex = cursor.getColumnIndex(QueryBillDeposits.ISVIRTUAL);
+        if (virtualIndex < 0 || cursor.getInt(virtualIndex) != 1) {
+            return;
+        }
+
+        String frequency = getOptionalString(cursor, QueryBillDeposits.VIRTUALFREQUENCY);
+        int frequencyLabel;
+        switch (frequency) {
+            case "Daily": frequencyLabel = R.string.daily; break;
+            case "Weekly": frequencyLabel = R.string.weekly; break;
+            case "Monthly": frequencyLabel = R.string.monthly; break;
+            case "Quarterly": frequencyLabel = R.string.quarterly; break;
+            default: frequencyLabel = 0; break;
+        }
+        label.setText(frequencyLabel == 0
+                ? mContext.getString(R.string.virtual_label)
+                : mContext.getString(R.string.virtual_frequency_label,
+                        mContext.getString(R.string.virtual_label),
+                        mContext.getString(frequencyLabel)));
+        label.setVisibility(View.VISIBLE);
     }
 
     public void clearPositionChecked() {
