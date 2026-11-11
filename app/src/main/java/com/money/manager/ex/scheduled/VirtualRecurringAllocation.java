@@ -8,6 +8,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import com.money.manager.ex.Constants;
+import com.money.manager.ex.domainmodel.RecurringTransaction;
+import com.money.manager.ex.utils.MmxDate;
+
 /**
  * Exact minor-unit allocation of a virtual recurrence within one nominal cycle.
  * This class has no database side effects and never posts transactions.
@@ -142,6 +146,74 @@ public final class VirtualRecurringAllocation {
             if (remaining > 0) --remaining;
         }
         return new AdvanceResult(due, remaining, 10000, false);
+    }
+
+    /**
+     * Turn a virtual schedule back into a normal schedule without posting any
+     * elapsed occurrences. Only supported schedules with a safe future state are changed.
+     */
+    public static boolean deactivate(RecurringTransaction transaction, LocalDate today,
+                                     String virtualFrequency) {
+        if (transaction == null || today == null || transaction.getPaymentDate() == null
+            || transaction.getDueDate() == null) return false;
+
+        Recurrence recurrence = transaction.getRecurrence();
+        Long paymentsLeft = transaction.getPaymentsLeft();
+        long remaining = paymentsLeft == null ? Constants.NOT_SET : paymentsLeft;
+        LocalDate paymentDate = LocalDate.parse(
+            new MmxDate(transaction.getPaymentDate()).toIsoDateString());
+        AdvanceResult advanced;
+        LocalDate nextPayment;
+        int skipped;
+        long nextPaymentsLeft;
+        if (paymentsLeft != null && paymentsLeft == 0) {
+            // An already exhausted schedule can still be safely switched off.
+            nextPayment = paymentDate;
+            skipped = 0;
+            nextPaymentsLeft = 0;
+        } else {
+            try {
+                advanced = advanceElapsed(paymentDate, recurrence, remaining, today);
+            } catch (IllegalArgumentException unsupportedRecurrence) {
+                return false;
+            }
+            if (advanced.ready) {
+                nextPayment = advanced.nextDue;
+                skipped = advanced.skipped;
+                nextPaymentsLeft = advanced.paymentsLeft;
+            } else if (paymentsLeft != null && paymentsLeft == 1
+                && !paymentDate.isAfter(today)) {
+                // Consume the final elapsed occurrence without inventing another payment.
+                try {
+                    nextPayment = nextNominalDue(paymentDate, recurrence);
+                } catch (IllegalArgumentException unsupportedRecurrence) {
+                    return false;
+                }
+                skipped = 1;
+                nextPaymentsLeft = 0;
+            } else {
+                return false;
+            }
+        }
+
+        LocalDate dueDate = LocalDate.parse(
+            new MmxDate(transaction.getDueDate()).toIsoDateString());
+        for (int i = 0; i < skipped; ++i) {
+            dueDate = nextNominalDue(dueDate, recurrence);
+        }
+
+        transaction.setPaymentDate(MmxDate.from(nextPayment.toString(), "yyyy-MM-dd"));
+        transaction.setDueDate(MmxDate.from(dueDate.toString(), "yyyy-MM-dd"));
+        if (paymentsLeft != null && paymentsLeft > 0) {
+            transaction.setPaymentsLeft(nextPaymentsLeft);
+        }
+        transaction.setRecurrenceMode(0);
+        if (isValidFrequency(recurrence, virtualFrequency)) {
+            transaction.setVirtualFrequency(virtualFrequency);
+        }
+        transaction.setVirtual(false);
+        transaction.setVirtualStartDate(null);
+        return true;
     }
 
     /**

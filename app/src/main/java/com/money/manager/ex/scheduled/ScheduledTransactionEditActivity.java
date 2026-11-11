@@ -469,31 +469,6 @@ public class ScheduledTransactionEditActivity
         }
     }
 
-    private boolean movePastVirtualDatesForward(RecurringTransaction transaction) {
-        Date nextPayment = transaction.getPaymentDate();
-        Date nextDue = transaction.getDueDate();
-        if (nextPayment == null || nextDue == null) return false;
-
-        Recurrence recurrence = transaction.getRecurrence();
-        LocalDate today = LocalDate.parse(new MmxDate().toIsoDateString());
-        Long paymentsLeft = transaction.getPaymentsLeft();
-        long remaining = paymentsLeft == null ? Constants.NOT_SET : paymentsLeft;
-        LocalDate payment = LocalDate.parse(new MmxDate(nextPayment).toIsoDateString());
-        VirtualRecurringAllocation.AdvanceResult advanced =
-            VirtualRecurringAllocation.advanceElapsed(payment, recurrence, remaining, today);
-        if (!advanced.ready) return false;
-
-        LocalDate due = LocalDate.parse(new MmxDate(nextDue).toIsoDateString());
-        for (int i = 0; i < advanced.skipped; ++i) {
-            due = VirtualRecurringAllocation.nextNominalDue(due, recurrence);
-        }
-        transaction.setPaymentDate(MmxDate.from(advanced.nextDue.toString(), "yyyy-MM-dd"));
-        transaction.setDueDate(MmxDate.from(due.toString(), "yyyy-MM-dd"));
-        if (paymentsLeft != null && paymentsLeft > 0)
-            transaction.setPaymentsLeft(advanced.paymentsLeft);
-        transaction.setRecurrenceMode(0);
-        return true;
-    }
 
     private boolean collectVirtualOptions() {
         RecurringTransaction transaction = getRecurringTransaction();
@@ -513,18 +488,22 @@ public class ScheduledTransactionEditActivity
                 || transaction.getVirtualStartDate().isEmpty())
                 transaction.setVirtualStartDate(new MmxDate().toIsoDateString());
         } else {
-            if (originallyVirtual && !movePastVirtualDatesForward(transaction)) {
-                Toast.makeText(this, R.string.invalid_virtual_next_occurrence,
-                    Toast.LENGTH_LONG).show();
-                return false;
-            }
             // Retain the last selected cadence when turning the virtual mode off.
             String frequency = virtualFrequencySpinner == null
                 ? null : (String) virtualFrequencySpinner.getSelectedItem();
-            if (VirtualRecurringAllocation.isValidFrequency(transaction.getRecurrence(), frequency))
-                transaction.setVirtualFrequency(frequency);
-            transaction.setVirtual(false);
-            transaction.setVirtualStartDate(null);
+            if (originallyVirtual) {
+                LocalDate today = LocalDate.parse(new MmxDate().toIsoDateString());
+                if (!VirtualRecurringAllocation.deactivate(transaction, today, frequency)) {
+                    Toast.makeText(this, R.string.invalid_virtual_next_occurrence,
+                        Toast.LENGTH_LONG).show();
+                    return false;
+                }
+            } else {
+                if (VirtualRecurringAllocation.isValidFrequency(transaction.getRecurrence(), frequency))
+                    transaction.setVirtualFrequency(frequency);
+                transaction.setVirtual(false);
+                transaction.setVirtualStartDate(null);
+            }
         }
         return true;
     }
