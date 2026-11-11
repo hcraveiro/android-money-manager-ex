@@ -4,7 +4,9 @@ import static org.junit.Assert.assertEquals;
 
 import android.content.Context;
 import android.database.MatrixCursor;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.TextView;
 
 import com.money.manager.ex.R;
@@ -33,16 +35,14 @@ public class AllDataAdapterVirtualLabelTest {
     public void virtualFrequenciesUseLocalizedResources() {
         AllDataAdapter adapter = new AllDataAdapter(context, null,
                 AllDataAdapter.TypeCursor.RECURRINGTRANSACTION);
-        TextView label = new TextView(context);
         String[] frequencies = {"Daily", "Weekly", "Monthly", "Quarterly"};
         int[] resources = {R.string.daily, R.string.weekly, R.string.monthly, R.string.quarterly};
         for (int i = 0; i < frequencies.length; i++) {
             try (MatrixCursor cursor = schedule(1, frequencies[i])) {
-                adapter.bindVirtualLabel(label, cursor);
-                assertEquals(View.VISIBLE, label.getVisibility());
                 assertEquals(context.getString(R.string.virtual_frequency_label,
-                        context.getString(R.string.virtual_label), context.getString(resources[i])),
-                        label.getText().toString());
+                                context.getString(R.string.virtual_label),
+                                context.getString(resources[i])),
+                        adapter.getVirtualLabel(cursor));
             }
         }
     }
@@ -51,12 +51,9 @@ public class AllDataAdapterVirtualLabelTest {
     public void missingOrUnknownFrequencyShowsVirtualOnly() {
         AllDataAdapter adapter = new AllDataAdapter(context, null,
                 AllDataAdapter.TypeCursor.RECURRINGTRANSACTION);
-        TextView label = new TextView(context);
         for (String frequency : new String[] {null, "", "Unknown"}) {
             try (MatrixCursor cursor = schedule(1, frequency)) {
-                adapter.bindVirtualLabel(label, cursor);
-                assertEquals(View.VISIBLE, label.getVisibility());
-                assertEquals(context.getString(R.string.virtual_label), label.getText().toString());
+                assertEquals(context.getString(R.string.virtual_label), adapter.getVirtualLabel(cursor));
             }
         }
     }
@@ -65,12 +62,14 @@ public class AllDataAdapterVirtualLabelTest {
     public void recycledRealScheduleHidesAndClearsLabel() {
         AllDataAdapter adapter = new AllDataAdapter(context, null,
                 AllDataAdapter.TypeCursor.RECURRINGTRANSACTION);
-        TextView label = new TextView(context);
         for (int virtual : new int[] {1, 0, 1, 0}) {
             try (MatrixCursor cursor = schedule(virtual, "Weekly")) {
-                adapter.bindVirtualLabel(label, cursor);
-                assertEquals(virtual == 1 ? View.VISIBLE : View.GONE, label.getVisibility());
-                if (virtual == 0) assertEquals("", label.getText().toString());
+                assertEquals(virtual == 1
+                                ? context.getString(R.string.virtual_frequency_label,
+                                        context.getString(R.string.virtual_label),
+                                        context.getString(R.string.weekly))
+                                : "",
+                        adapter.getVirtualLabel(cursor));
             }
         }
     }
@@ -78,15 +77,44 @@ public class AllDataAdapterVirtualLabelTest {
     @Test
     public void ordinaryTransactionsNeedNoVirtualColumnsAndClearRecycledLabel() {
         AllDataAdapter adapter = new AllDataAdapter(context, null, AllDataAdapter.TypeCursor.ALLDATA);
-        TextView label = new TextView(context);
-        label.setText("stale label");
-        label.setVisibility(View.VISIBLE);
         try (MatrixCursor cursor = new MatrixCursor(new String[] {"ID"})) {
             cursor.addRow(new Object[] {1});
             cursor.moveToFirst();
-            adapter.bindVirtualLabel(label, cursor);
-            assertEquals(View.GONE, label.getVisibility());
-            assertEquals("", label.getText().toString());
+            assertEquals("", adapter.getVirtualLabel(cursor));
         }
+    }
+
+    @Test
+    public void virtualTagDoesNotIncreaseScheduledRowHeight() {
+        int regularHeight = measureSampleRow(false);
+        assertEquals(regularHeight, measureSampleRow(true));
+    }
+
+    private int measureSampleRow(boolean virtual) {
+        View row = LayoutInflater.from(context).inflate(R.layout.item_alldata_account, null, false);
+        int widthPx = Math.round(360 * context.getResources().getDisplayMetrics().density);
+        row.setLayoutParams(new ViewGroup.LayoutParams(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT));
+        ((TextView) row.findViewById(R.id.textViewMonth)).setText("Nov");
+        ((TextView) row.findViewById(R.id.textViewDay)).setText("03");
+        ((TextView) row.findViewById(R.id.textViewYear)).setText("2026");
+        ((TextView) row.findViewById(R.id.textViewCategorySub)).setText("Automobile:Maintenance");
+        ((TextView) row.findViewById(R.id.textViewAmount)).setText("€ -300.00");
+        ((TextView) row.findViewById(R.id.textViewStatus)).setText("Reconciled");
+        TextView balance = row.findViewById(R.id.textViewBalance);
+        balance.setText("8 days overdue!");
+        balance.setVisibility(View.VISIBLE);
+
+        AllDataAdapter adapter = new AllDataAdapter(context, null,
+                AllDataAdapter.TypeCursor.RECURRINGTRANSACTION);
+        try (MatrixCursor cursor = schedule(virtual ? 1 : 0, "Weekly")) {
+            String label = adapter.getVirtualLabel(cursor);
+            ((TextView) row.findViewById(R.id.textViewPayee)).setText(
+                    adapter.getPayeeDisplayText("Renault", label));
+        }
+
+        int width = View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY);
+        int height = View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.AT_MOST);
+        row.measure(width, height);
+        return row.getMeasuredHeight();
     }
 }

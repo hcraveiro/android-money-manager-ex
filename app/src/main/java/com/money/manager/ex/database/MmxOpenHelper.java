@@ -73,15 +73,21 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
      * @param context Current context.
      */
     public MmxOpenHelper(Context context, String dbPath) {
+        this(context, dbPath, true);
+    }
+
+    MmxOpenHelper(Context context, String dbPath, boolean loadSqlCipher) {
         super(DATABASE_VERSION_MIN);
         this.mContext = context;
         this.dbPath = dbPath;
         this.mPassword = MmexApplication.getApp().getPassword();
         originalVersion = -1;
 
-        // Load the sqlite3mc native library.
-        // System.loadLibrary("sqliteX");
-        System.loadLibrary("sqlcipher");
+        if (loadSqlCipher) {
+            // Load the sqlite3mc native library.
+            // System.loadLibrary("sqliteX");
+            System.loadLibrary("sqlcipher");
+        }
     }
 
     public Context getContext() {
@@ -131,9 +137,10 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
             Timber.d("Force DB version to %d", db.getVersion());
         }
 
-        //     super.onOpen(db);
-
-//        long version = db.getVersion();
+        if (db.getVersion() >= DATABASE_VERSION_MIN && !hasValidV22Schema(db)) {
+            Timber.w("Database version is %d but v22 schema is incomplete; repairing", db.getVersion());
+            repairV22Schema(db);
+        }
     }
 
     public void onUpgrade(@NonNull SupportSQLiteDatabase db, int oldVersion, int newVersion) {
@@ -142,17 +149,13 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
         originalVersion = (originalVersion == -1) ? oldVersion : originalVersion;
 
         try {
-            String currentDbFile = db.getPath();
-            createDatabaseBackupOnUpgrade(currentDbFile, oldVersion);
+            createDatabaseBackupOnUpgrade(db.getPath(), oldVersion);
+            updateDatabase(db, oldVersion, newVersion);
+            validateV22Schema(db);
         } catch (Exception ex) {
-            Timber.e(ex, "creating database backup, can't continue");
-
-            // don't upgrade
-            return;
+            Timber.e(ex, "Database upgrade failed");
+            throw new SQLiteException("Database upgrade failed; the original data was preserved", ex);
         }
-
-        // update databases
-        updateDatabase(db, oldVersion, newVersion);
     }
 
     public void onDowngrade (@NonNull SupportSQLiteDatabase db, int oldVersion, int newVersion) {
@@ -226,6 +229,10 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
      * @param rawId id raw resource
      */
     private void executeRawSql(SupportSQLiteDatabase db, int rawId) {
+        executeRawSql(db, rawId, false);
+    }
+
+    private void executeRawSql(SupportSQLiteDatabase db, int rawId, boolean failOnError) {
         String sqlRaw = MmxFileUtils.getRawAsString(getContext(), rawId);
         // Use ;; as delimiter for cloud sync to handle complex statements like triggers
         String delimiter = SyncManager.isCloudSyncEnabled() ? ";;" : ";";
@@ -245,6 +252,9 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
                     Timber.w(errorMessage);
                 } else {
                     Timber.e(e, "executing raw sql: %s", aSqlStatement);
+                    if (failOnError) {
+                        throw new SQLiteException("Database migration SQL failed", e);
+                    }
                 }
             }
         }
@@ -272,13 +282,74 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
     }
 
     private void updateDatabase(SupportSQLiteDatabase db, int oldVersion, int newVersion) {
-        // Execute every script between the old and the new version of the database schema.
-        for (int i = oldVersion + 1; i <= newVersion; i++) {
+        // Keep historical migrations in order; v22 is idempotent to recover interrupted upgrades.
+        for (int i = oldVersion + 1; i < newVersion; i++) {
             int resourceId = mContext.getResources()
                     .getIdentifier("database_version_" + i,
                             "raw", mContext.getPackageName());
             if (resourceId > 0) {
-                executeRawSql(db, resourceId);
+                executeRawSql(db, resourceId, true);
+            }
+        }
+        if (newVersion >= 22) {
+            ensureV22Schema(db);
+        } else {
+            int resourceId = mContext.getResources().getIdentifier(
+                    "database_version_" + newVersion, "raw", mContext.getPackageName());
+            if (resourceId > 0) executeRawSql(db, resourceId, true);
+        }
+    }
+
+    private void repairV22Schema(SupportSQLiteDatabase db) {
+        try {
+            createDatabaseBackupOnUpgrade(db.getPath(), db.getVersion());
+            db.beginTransaction();
+            try {
+                ensureV22Schema(db);
+                validateV22Schema(db);
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+        } catch (Exception ex) {
+            Timber.e(ex, "Repairing interrupted v22 migration failed");
+            throw new SQLiteException("Database schema repair failed; the original data was preserved", ex);
+        }
+    }
+
+    private void ensureV22Schema(SupportSQLiteDatabase db) {
+        ensureColumn(db, "ISVIRTUAL", "INTEGER NOT NULL DEFAULT 0");
+        ensureColumn(db, "VIRTUALFREQUENCY", "TEXT DEFAULT NULL");
+        ensureColumn(db, "VIRTUALSTARTDATE", "TEXT DEFAULT NULL");
+        db.execSQL("UPDATE INFOTABLE_V1 SET INFOVALUE = '22' WHERE INFONAME = 'DATAVERSION'");
+    }
+
+    private void ensureColumn(SupportSQLiteDatabase db, String column, String definition) {
+        try (Cursor cursor = db.query("PRAGMA table_info(BILLSDEPOSITS_V1)")) {
+            while (cursor != null && cursor.moveToNext()) {
+                if (column.equalsIgnoreCase(cursor.getString(cursor.getColumnIndexOrThrow("name")))) return;
+            }
+        }
+        db.execSQL("ALTER TABLE BILLSDEPOSITS_V1 ADD COLUMN " + column + " " + definition);
+    }
+
+    private boolean hasValidV22Schema(SupportSQLiteDatabase db) {
+        try {
+            validateV22Schema(db);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void validateV22Schema(SupportSQLiteDatabase db) {
+        for (String column : new String[]{"ISVIRTUAL", "VIRTUALFREQUENCY", "VIRTUALSTARTDATE"}) {
+            try (Cursor cursor = db.query("SELECT " + column + " FROM BILLSDEPOSITS_V1 LIMIT 0")) { }
+        }
+        try (Cursor cursor = db.query(
+                "SELECT INFOVALUE FROM INFOTABLE_V1 WHERE INFONAME = 'DATAVERSION'")) {
+            if (cursor == null || !cursor.moveToFirst() || !"22".equals(cursor.getString(0))) {
+                throw new SQLiteException("INFOTABLE_V1 DATAVERSION is not 22");
             }
         }
     }
@@ -395,8 +466,16 @@ public class MmxOpenHelper extends SupportSQLiteOpenHelper.Callback {
         //String outPath = FilenameUtils.getFullPath(currentDbFile) + backupFileNameWithExtension;
         String outPath = new File(folder, backupFileNameWithExtension).getAbsolutePath();
         File out = new File(outPath);
+        int suffix = 1;
+        while (out.exists()) {
+            out = new File(folder, backupName + "_" + suffix++ + "." + backupExtension);
+        }
 
         //FileUtils.copyFile(in, out);
         Files.copy(in, out);
+        if (!out.isFile() || out.length() != in.length()) {
+            out.delete();
+            throw new IOException("Database backup verification failed: " + out);
+        }
     }
 }

@@ -19,8 +19,13 @@ package com.money.manager.ex.adapter;
 import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import androidx.core.content.ContextCompat;
 import android.text.Html;
+import android.text.SpannableStringBuilder;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
+import android.text.style.StyleSpan;
 import android.text.TextUtils;
 import android.util.SparseBooleanArray;
 import android.view.LayoutInflater;
@@ -137,7 +142,7 @@ public class AllDataAdapter
         // take a holder
         AllDataViewHolder holder = (AllDataViewHolder) view.getTag();
 
-        bindVirtualLabel(view.findViewById(R.id.textViewVirtualFrequency), cursor);
+        String virtualLabel = getVirtualLabel(cursor);
 
         String transactionType = cursor.getString(cursor.getColumnIndexOrThrow(TRANSACTIONTYPE));
         boolean isTransfer = TransactionTypes.valueOf(transactionType).equals(TransactionTypes.Transfer);
@@ -243,7 +248,7 @@ public class AllDataAdapter
             holder.txtAccountName.setVisibility(View.GONE);
         }
 
-        if (!isShowAccountName() && mAccountId == Constants.NOT_SET) {
+        if (mTypeCursor == TypeCursor.ALLDATA && !isShowAccountName() && mAccountId == Constants.NOT_SET) {
             holder.txtTransactionAccountName.setText(cursor.getString(cursor.getColumnIndexOrThrow(ACCOUNTNAME)));
             holder.txtTransactionAccountName.setVisibility(View.VISIBLE);
         } else {
@@ -252,7 +257,7 @@ public class AllDataAdapter
 
         // Payee
         String payee = isShareTransaction ? getShareTitle(cursor) : getPayeeName(cursor, isTransfer);
-        holder.txtPayee.setText(payee);
+        holder.txtPayee.setText(getPayeeDisplayText(payee, virtualLabel));
 
         // compose category description
 
@@ -323,16 +328,13 @@ public class AllDataAdapter
         }
     }
 
-    void bindVirtualLabel(TextView label, Cursor cursor) {
-        // Reset recycled rows, including ordinary account transactions without virtual columns.
-        label.setText(null);
-        label.setVisibility(View.GONE);
+    String getVirtualLabel(Cursor cursor) {
         if (mTypeCursor != TypeCursor.RECURRINGTRANSACTION) {
-            return;
+            return "";
         }
         int virtualIndex = cursor.getColumnIndex(QueryBillDeposits.ISVIRTUAL);
         if (virtualIndex < 0 || cursor.getInt(virtualIndex) != 1) {
-            return;
+            return "";
         }
 
         String frequency = getOptionalString(cursor, QueryBillDeposits.VIRTUALFREQUENCY);
@@ -344,12 +346,28 @@ public class AllDataAdapter
             case "Quarterly": frequencyLabel = R.string.quarterly; break;
             default: frequencyLabel = 0; break;
         }
-        label.setText(frequencyLabel == 0
+        return frequencyLabel == 0
                 ? mContext.getString(R.string.virtual_label)
                 : mContext.getString(R.string.virtual_frequency_label,
                         mContext.getString(R.string.virtual_label),
-                        mContext.getString(frequencyLabel)));
-        label.setVisibility(View.VISIBLE);
+                        mContext.getString(frequencyLabel));
+    }
+
+    CharSequence getPayeeDisplayText(String payee, String virtualLabel) {
+        if (TextUtils.isEmpty(virtualLabel)) {
+            return payee;
+        }
+
+        SpannableStringBuilder text = new SpannableStringBuilder(virtualLabel)
+                .append(" · ")
+                .append(payee == null ? "" : payee);
+        text.setSpan(new RelativeSizeSpan(0.75f), 0, virtualLabel.length(),
+                SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
+        text.setSpan(new ForegroundColorSpan(Color.GRAY), 0, virtualLabel.length(),
+                SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
+        text.setSpan(new StyleSpan(Typeface.ITALIC), 0, virtualLabel.length(),
+                SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return text;
     }
 
     public void clearPositionChecked() {
